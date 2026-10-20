@@ -46,6 +46,9 @@ class ModelSpec:
     # with the usual decay xi. The offsets describe promoted clubs in general, which should change
     # slowly, so they need not be forgotten as fast as team strengths.
     promo_xi: float | None = None
+    # If set, every team gets its own home advantage delta_t on top of the common eta, with a
+    # ridge penalty kappa_home * sum(delta^2) (large kappa_home means "everyone the same").
+    kappa_home: float | None = None
 
     def covariate_names(self):
         """Names of the gamma coefficients, in theta order."""
@@ -149,7 +152,7 @@ def fit_before(df, ref_date, T, xi, kappa, theta0=None, spec=BASE):
         w1 = P.time_weights(age, spec.promo_xi)
         stage1 = P.fit(
             train["h"].values, train["a"].values, train["FTHG"].values, train["FTAG"].values,
-            w1, T, kappa, X=X, Xm=Xm, dc=spec.dc,
+            w1, T, kappa, X=X, Xm=Xm, dc=spec.dc, kappa_h=spec.kappa_home,
         )
         first = 2 + 2 * T + spec.covariate_names().index("promoted_attack")
         fixed = {first: stage1.theta[first], first + 1: stage1.theta[first + 1]}
@@ -166,14 +169,16 @@ def fit_before(df, ref_date, T, xi, kappa, theta0=None, spec=BASE):
         Xm=Xm,
         dc=spec.dc,
         fixed=fixed,
+        kappa_h=spec.kappa_home,
     )
 
 
 def predict_block(theta, block, T, spec=BASE):
     """Outcome probabilities (n, 3) for a block of matches. Upcoming matches have fans (flag 0)."""
     X, Xm = _covariates(block, spec)
-    lam, mu = P.rates(theta, block["h"].values, block["a"].values, T, X, Xm)
-    _, rho = P.unpack_extra(theta, T, len(spec.covariate_names()), spec.dc)
+    ha = spec.kappa_home is not None
+    lam, mu = P.rates(theta, block["h"].values, block["a"].values, T, X, Xm, ha)
+    _, rho = P.unpack_extra(theta, T, len(spec.covariate_names()), spec.dc, ha)
     return P.outcome_probs(lam, mu, rho=rho)
 
 

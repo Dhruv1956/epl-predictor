@@ -72,9 +72,9 @@ _TAU_FLOOR = 1e-10  # keeps log(tau) finite at invalid trial points the line sea
 # ----------------------------------------------------------------------
 
 
-def n_params(T, k=0, dc=False):
-    """Length of theta: 2 + 2T base parameters, k gammas, and rho if dc."""
-    return 2 + 2 * T + k + (1 if dc else 0)
+def n_params(T, k=0, dc=False, ha=False):
+    """Length of theta: 2 + 2T base parameters, k gammas, T team home advantages if ha, rho if dc."""
+    return 2 + 2 * T + k + (T if ha else 0) + (1 if dc else 0)
 
 
 def unpack(theta, T):
@@ -82,14 +82,19 @@ def unpack(theta, T):
     return theta[0], theta[1], theta[2 : 2 + T], theta[2 + T : 2 + 2 * T]
 
 
-def unpack_extra(theta, T, k=0, dc=False):
+def unpack_extra(theta, T, k=0, dc=False, ha=False):
     """Return (gamma, rho): the covariate coefficients and the Dixon-Coles parameter (0 if unused)."""
     gamma = theta[2 + 2 * T : 2 + 2 * T + k]
-    rho = float(theta[2 + 2 * T + k]) if dc else 0.0
+    rho = float(theta[2 + 2 * T + k + (T if ha else 0)]) if dc else 0.0
     return gamma, rho
 
 
-def linear_predictors(theta, h, a, T, X=None, Xm=None):
+def unpack_delta(theta, T, k=0):
+    """Team-specific home-advantage deviations delta (only meaningful when the model has them)."""
+    return theta[2 + 2 * T + k : 2 + 2 * T + k + T]
+
+
+def linear_predictors(theta, h, a, T, X=None, Xm=None, ha=False):
     """Return (log lam, log mu) for each match.
 
     X (n, k) adds X @ gamma to log lam. Xm (n, k), if given, adds Xm @ gamma to log mu with the
@@ -105,12 +110,15 @@ def linear_predictors(theta, h, a, T, X=None, Xm=None):
             log_mu = log_mu + Xm @ gamma
     elif Xm is not None:
         raise ValueError("Xm requires X")
+    if ha:
+        k = 0 if X is None else X.shape[1]
+        log_lam = log_lam + unpack_delta(theta, T, k)[h]
     return log_lam, log_mu
 
 
-def rates(theta, h, a, T, X=None, Xm=None):
+def rates(theta, h, a, T, X=None, Xm=None, ha=False):
     """Return the Poisson means (lam, mu) for each match."""
-    log_lam, log_mu = linear_predictors(theta, h, a, T, X, Xm)
+    log_lam, log_mu = linear_predictors(theta, h, a, T, X, Xm, ha)
     return np.exp(log_lam), np.exp(log_mu)
 
 
@@ -183,7 +191,7 @@ def _apply_tau(joint, lam, mu, rho):
 # ----------------------------------------------------------------------
 
 
-def loglik_and_grad(theta, h, a, x, y, w, T, kappa, X=None, dc=False, Xm=None):
+def loglik_and_grad(theta, h, a, x, y, w, T, kappa, X=None, dc=False, Xm=None, kappa_h=None):
     """Penalised weighted log-likelihood ell(theta) and its gradient.
 
     h, a : integer team indices (0..T-1) of home and away team per match
@@ -192,19 +200,26 @@ def loglik_and_grad(theta, h, a, x, y, w, T, kappa, X=None, dc=False, Xm=None):
     X    : optional (n, k) covariates entering log lam (with coefficients gamma)
     Xm   : optional (n, k) covariates entering log mu with the same gamma
     dc   : include the Dixon-Coles correction with rho as the last parameter
+    kappa_h : if given, each team gets its own home advantage delta_t (after the gammas in theta),
+              ridge-penalised with strength kappa_h; None means one common home advantage eta only
     """
     k = 0 if X is None else X.shape[1]
-    log_lam, log_mu = linear_predictors(theta, h, a, T, X, Xm)
+    ha = kappa_h is not None
+    log_lam, log_mu = linear_predictors(theta, h, a, T, X, Xm, ha)
     lam, mu = np.exp(log_lam), np.exp(log_mu)
     _, _, alpha, beta = unpack(theta, T)
+    if ha:
+        delta = unpack_delta(theta, T, k)
 
     ll = np.sum(w * (x * log_lam - lam + y * log_mu - mu - gammaln(x + 1) - gammaln(y + 1)))
     ll -= kappa * (alpha @ alpha + beta @ beta)
+    if ha:
+        ll -= kappa_h * (delta @ delta)
 
     e = x - lam
     f = y - mu
     if dc:
-        rho = theta[2 + 2 * T + k]
+        rho = theta[2 + 2 * T + k + (T if ha else 0)]
         tau, d_loglam, d_logmu, d_rho = dc_tau_terms(x, y, lam, mu, rho)
         ll += np.sum(w * np.log(tau))
         e = e + d_loglam
@@ -227,8 +242,10 @@ def loglik_and_grad(theta, h, a, x, y, w, T, kappa, X=None, dc=False, Xm=None):
         grad[2 + 2 * T : 2 + 2 * T + k] = X.T @ (w * e)
         if Xm is not None:
             grad[2 + 2 * T : 2 + 2 * T + k] += Xm.T @ (w * f)
+    if ha:
+        grad[2 + 2 * T + k : 2 + 2 * T + k + T] = np.bincount(h, weights=w * e, minlength=T) - 2.0 * kappa_h * delta
     if dc:
-        grad[2 + 2 * T + k] = np.sum(w * d_rho)
+        grad[-1] = np.sum(w * d_rho)
     return ll, grad
 
 
@@ -248,11 +265,14 @@ class FitResult:
     def unpack(self, T: int):
         return unpack(self.theta, T)
 
-    def unpack_extra(self, T: int, k: int = 0, dc: bool = False):
-        return unpack_extra(self.theta, T, k, dc)
+    def unpack_extra(self, T: int, k: int = 0, dc: bool = False, ha: bool = False):
+        return unpack_extra(self.theta, T, k, dc, ha)
+
+    def unpack_delta(self, T: int, k: int = 0):
+        return unpack_delta(self.theta, T, k)
 
 
-def fit(h, a, x, y, w, T, kappa, theta0=None, max_iter=1000, X=None, dc=False, Xm=None, fixed=None):
+def fit(h, a, x, y, w, T, kappa, theta0=None, max_iter=1000, X=None, dc=False, Xm=None, fixed=None, kappa_h=None):
     """Maximise the penalised weighted log-likelihood with L-BFGS-B.
 
     kappa must be positive: the ridge penalty is what makes the Model B maximiser unique
@@ -277,7 +297,7 @@ def fit(h, a, x, y, w, T, kappa, theta0=None, max_iter=1000, X=None, dc=False, X
     k = 0 if X is None else X.shape[1]
 
     if theta0 is None:
-        theta0 = np.zeros(n_params(T, k, dc))
+        theta0 = np.zeros(n_params(T, k, dc, kappa_h is not None))
         mean_goals = np.average(np.concatenate([x, y]), weights=np.concatenate([w, w]))
         theta0[0] = np.log(max(mean_goals, 1e-3))
     theta0 = np.array(theta0, dtype=float)
@@ -289,7 +309,7 @@ def fit(h, a, x, y, w, T, kappa, theta0=None, max_iter=1000, X=None, dc=False, X
         bounds[idx] = (val, val)
 
     def neg(theta):
-        ll, g = loglik_and_grad(theta, h, a, x, y, w, T, kappa, X=X, dc=dc, Xm=Xm)
+        ll, g = loglik_and_grad(theta, h, a, x, y, w, T, kappa, X=X, dc=dc, Xm=Xm, kappa_h=kappa_h)
         return -ll, -g
 
     res = minimize(

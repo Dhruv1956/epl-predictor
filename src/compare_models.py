@@ -23,6 +23,9 @@ from . import poisson as P
 from .run_walkforward import ODDS_SOURCES, TEST_END, TEST_START, VAL_END, VAL_START, md_table
 from .walkforward import BASE, ModelSpec, fit_before, grid_search, load_matches, walk_forward
 
+# current working model: closed-doors term + promoted-team offsets estimated in a first stage without decay
+WORKING = ModelSpec("working: cd + promoted (2-stage)", closed_doors=True, promoted=True, promo_xi=0.0)
+
 SUITES = {
     # first spec in each suite is the reference for the paired differences
     "ablation": [
@@ -42,6 +45,13 @@ SUITES = {
         ModelSpec("promoted, joint", closed_doors=True, promoted=True),
         ModelSpec("promoted, offsets xi=0", closed_doors=True, promoted=True, promo_xi=0.0),
         ModelSpec("promoted, offsets xi=0.3", closed_doors=True, promoted=True, promo_xi=0.3),
+    ],
+    # does each team have its own home advantage? (kappa_home: larger = shrunk harder towards one common value)
+    "homeadv": [
+        WORKING,
+        ModelSpec("working + team home adv (kappa_h=20)", closed_doors=True, promoted=True, promo_xi=0.0, kappa_home=20.0),
+        ModelSpec("working + team home adv (kappa_h=60)", closed_doors=True, promoted=True, promo_xi=0.0, kappa_home=60.0),
+        ModelSpec("working + team home adv (kappa_h=5)", closed_doors=True, promoted=True, promo_xi=0.0, kappa_home=5.0),
     ],
 }
 GRID = {"xi": [0.75, 1.0, 1.5, 2.0], "kappa": [2.0, 5.0]}
@@ -150,15 +160,22 @@ def main(argv=None):
     fit_lines = []
     for spec in SPECS:
         names = spec.covariate_names()
-        if not names and not spec.dc:
+        if not names and not spec.dc and spec.kappa_home is None:
             continue
         xi, kappa, _ = chosen[spec.name]
         res = fit_before(df, last, T, xi, kappa, spec=spec)
         _, eta, _, _ = res.unpack(T)
-        gamma, rho = res.unpack_extra(T, len(names), spec.dc)
+        ha = spec.kappa_home is not None
+        gamma, rho = res.unpack_extra(T, len(names), spec.dc, ha)
         parts = [f"eta = {eta:.3f}"] + [f"{n} = {g:.3f}" for n, g in zip(names, gamma)]
         if spec.dc:
             parts.append(f"rho = {rho:.3f}")
+        if ha:
+            delta = pd.Series(res.unpack_delta(T, len(names)), index=teams)
+            active = set(df.loc[df["Date"] >= last - pd.Timedelta(days=400), ["HomeTeam", "AwayTeam"]].values.ravel())
+            d = delta[delta.index.isin(active)].sort_values()
+            parts.append(f"delta sd = {d.std():.3f}; lowest {', '.join(f'{t} {v:+.2f}' for t, v in d.head(3).items())}; "
+                         f"highest {', '.join(f'{t} {v:+.2f}' for t, v in d.tail(3).items())}")
         fit_lines.append(f"{spec.name}: " + "; ".join(parts))
     print("\nFitted on all data (coefficients are log-rate shifts; negative = weaker):")
     for line in fit_lines:
