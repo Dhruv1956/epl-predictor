@@ -89,19 +89,28 @@ def unpack_extra(theta, T, k=0, dc=False):
     return gamma, rho
 
 
-def linear_predictors(theta, h, a, T, X=None):
-    """Return (log lam, log mu) for each match."""
+def linear_predictors(theta, h, a, T, X=None, Xm=None):
+    """Return (log lam, log mu) for each match.
+
+    X (n, k) adds X @ gamma to log lam. Xm (n, k), if given, adds Xm @ gamma to log mu with the
+    SAME gamma (so a coefficient can act on both teams' rates, e.g. a newly-promoted-team effect).
+    """
     iota, eta, alpha, beta = unpack(theta, T)
     log_lam = iota + eta + alpha[h] - beta[a]
-    if X is not None and X.shape[1] > 0:
-        log_lam = log_lam + X @ theta[2 + 2 * T : 2 + 2 * T + X.shape[1]]
     log_mu = iota + alpha[a] - beta[h]
+    if X is not None and X.shape[1] > 0:
+        gamma = theta[2 + 2 * T : 2 + 2 * T + X.shape[1]]
+        log_lam = log_lam + X @ gamma
+        if Xm is not None:
+            log_mu = log_mu + Xm @ gamma
+    elif Xm is not None:
+        raise ValueError("Xm requires X")
     return log_lam, log_mu
 
 
-def rates(theta, h, a, T, X=None):
+def rates(theta, h, a, T, X=None, Xm=None):
     """Return the Poisson means (lam, mu) for each match."""
-    log_lam, log_mu = linear_predictors(theta, h, a, T, X)
+    log_lam, log_mu = linear_predictors(theta, h, a, T, X, Xm)
     return np.exp(log_lam), np.exp(log_mu)
 
 
@@ -174,17 +183,18 @@ def _apply_tau(joint, lam, mu, rho):
 # ----------------------------------------------------------------------
 
 
-def loglik_and_grad(theta, h, a, x, y, w, T, kappa, X=None, dc=False):
+def loglik_and_grad(theta, h, a, x, y, w, T, kappa, X=None, dc=False, Xm=None):
     """Penalised weighted log-likelihood ell(theta) and its gradient.
 
     h, a : integer team indices (0..T-1) of home and away team per match
     x, y : home and away goals
     w    : non-negative match weights
-    X    : optional (n, k) covariates for the home advantage
+    X    : optional (n, k) covariates entering log lam (with coefficients gamma)
+    Xm   : optional (n, k) covariates entering log mu with the same gamma
     dc   : include the Dixon-Coles correction with rho as the last parameter
     """
     k = 0 if X is None else X.shape[1]
-    log_lam, log_mu = linear_predictors(theta, h, a, T, X)
+    log_lam, log_mu = linear_predictors(theta, h, a, T, X, Xm)
     lam, mu = np.exp(log_lam), np.exp(log_mu)
     _, _, alpha, beta = unpack(theta, T)
 
@@ -215,6 +225,8 @@ def loglik_and_grad(theta, h, a, x, y, w, T, kappa, X=None, dc=False):
     )
     if k:
         grad[2 + 2 * T : 2 + 2 * T + k] = X.T @ (w * e)
+        if Xm is not None:
+            grad[2 + 2 * T : 2 + 2 * T + k] += Xm.T @ (w * f)
     if dc:
         grad[2 + 2 * T + k] = np.sum(w * d_rho)
     return ll, grad
@@ -240,7 +252,7 @@ class FitResult:
         return unpack_extra(self.theta, T, k, dc)
 
 
-def fit(h, a, x, y, w, T, kappa, theta0=None, max_iter=1000, X=None, dc=False):
+def fit(h, a, x, y, w, T, kappa, theta0=None, max_iter=1000, X=None, dc=False, Xm=None):
     """Maximise the penalised weighted log-likelihood with L-BFGS-B.
 
     kappa must be positive: the ridge penalty is what makes the Model B maximiser unique
@@ -255,6 +267,10 @@ def fit(h, a, x, y, w, T, kappa, theta0=None, max_iter=1000, X=None, dc=False):
         X = np.asarray(X, dtype=float)
         if X.ndim == 1:
             X = X[:, None]
+    if Xm is not None:
+        Xm = np.asarray(Xm, dtype=float)
+        if Xm.ndim == 1:
+            Xm = Xm[:, None]
     k = 0 if X is None else X.shape[1]
 
     if theta0 is None:
@@ -266,7 +282,7 @@ def fit(h, a, x, y, w, T, kappa, theta0=None, max_iter=1000, X=None, dc=False):
         bounds = [(None, None)] * (len(theta0) - 1) + [RHO_BOUNDS]
 
     def neg(theta):
-        ll, g = loglik_and_grad(theta, h, a, x, y, w, T, kappa, X=X, dc=dc)
+        ll, g = loglik_and_grad(theta, h, a, x, y, w, T, kappa, X=X, dc=dc, Xm=Xm)
         return -ll, -g
 
     res = minimize(

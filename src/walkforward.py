@@ -40,6 +40,12 @@ class ModelSpec:
     name: str = "B: Poisson"
     closed_doors: bool = False  # separate home-advantage shift gamma for matches without fans
     dc: bool = False  # Dixon-Coles low-score correction (adds rho)
+    promoted: bool = False  # learned attack and defence offsets for newly promoted teams
+
+    def covariate_names(self):
+        """Names of the gamma coefficients, in theta order."""
+        names = ["closed_doors"] if self.closed_doors else []
+        return names + (["promoted_attack", "promoted_defence"] if self.promoted else [])
 
 
 BASE = ModelSpec()
@@ -51,6 +57,28 @@ def add_closed_doors_flag(df):
     for start, end in CLOSED_DOORS_WINDOWS:
         flag[((df["Date"] >= pd.Timestamp(start)) & (df["Date"] < pd.Timestamp(end))).values] = 1
     df["closed_doors"] = flag
+    return df
+
+
+def add_newcomer_flags(df):
+    """Add h_new / a_new: 1 if that team is in its first season back after absence from the league.
+
+    A team is a newcomer in season s if it plays in s but not in the season before s (so promoted
+    teams, including ones returning after one year away). The first season in the data has no
+    'season before', so nobody is flagged there. Only team names per season are used, never
+    results: the list of 20 clubs is public before the season starts, so this is not leakage.
+    Without a Season column, nobody is flagged.
+    """
+    df["h_new"] = 0
+    df["a_new"] = 0
+    if "Season" not in df.columns:
+        return df
+    order = df.groupby("Season")["Date"].min().sort_values().index.tolist()
+    members = {s: set(df.loc[df["Season"] == s, "HomeTeam"]) | set(df.loc[df["Season"] == s, "AwayTeam"]) for s in order}
+    new = {order[i]: members[order[i]] - members[order[i - 1]] for i in range(1, len(order))}
+    new[order[0]] = set()
+    df["h_new"] = [int(t in new[s]) for t, s in zip(df["HomeTeam"], df["Season"])]
+    df["a_new"] = [int(t in new[s]) for t, s in zip(df["AwayTeam"], df["Season"])]
     return df
 
 
@@ -68,7 +96,7 @@ def load_matches(path="data/processed/matches.csv"):
     df["h"] = df["HomeTeam"].map(index).astype(int)
     df["a"] = df["AwayTeam"].map(index).astype(int)
     df["y"] = df["FTR"].map(RESULT_CODE).astype(int)
-    return add_closed_doors_flag(df), teams
+    return add_newcomer_flags(add_closed_doors_flag(df)), teams
 
 
 def week_periods(dates):
@@ -82,7 +110,24 @@ def block_start_dates(df):
 
 
 def _covariates(frame, spec):
-    return frame[["closed_doors"]].values.astype(float) if spec.closed_doors else None
+    """Covariates (X for log lam, Xm for log mu) sharing one gamma vector, or (None, None).
+
+    closed_doors : X = flag, Xm = 0 (it only shifts the home side).
+    promoted     : attack offset  pi_a: X = h_new,  Xm = a_new   (a newcomer's own scoring rate)
+                   defence offset pi_b: X = -a_new, Xm = -h_new  (defence enters log rates with a minus)
+    """
+    if not (spec.closed_doors or spec.promoted):
+        return None, None
+    cols_l, cols_m = [], []
+    zero = np.zeros(len(frame))
+    if spec.closed_doors:
+        cols_l.append(frame["closed_doors"].values.astype(float))
+        cols_m.append(zero)
+    if spec.promoted:
+        hn, an = frame["h_new"].values.astype(float), frame["a_new"].values.astype(float)
+        cols_l += [hn, -an]
+        cols_m += [an, -hn]
+    return np.column_stack(cols_l), np.column_stack(cols_m)
 
 
 def fit_before(df, ref_date, T, xi, kappa, theta0=None, spec=BASE):
@@ -93,6 +138,7 @@ def fit_before(df, ref_date, T, xi, kappa, theta0=None, spec=BASE):
         raise ValueError(f"No matches before {ref.date()}")
     age = P.age_in_years(train["Date"].values, ref.to_datetime64())
     w = P.time_weights(age, xi)
+    X, Xm = _covariates(train, spec)
     return P.fit(
         train["h"].values,
         train["a"].values,
@@ -102,17 +148,17 @@ def fit_before(df, ref_date, T, xi, kappa, theta0=None, spec=BASE):
         T,
         kappa,
         theta0=theta0,
-        X=_covariates(train, spec),
+        X=X,
+        Xm=Xm,
         dc=spec.dc,
     )
 
 
 def predict_block(theta, block, T, spec=BASE):
     """Outcome probabilities (n, 3) for a block of matches. Upcoming matches have fans (flag 0)."""
-    X = _covariates(block, spec)
-    lam, mu = P.rates(theta, block["h"].values, block["a"].values, T, X)
-    k = 1 if spec.closed_doors else 0
-    _, rho = P.unpack_extra(theta, T, k, spec.dc)
+    X, Xm = _covariates(block, spec)
+    lam, mu = P.rates(theta, block["h"].values, block["a"].values, T, X, Xm)
+    _, rho = P.unpack_extra(theta, T, len(spec.covariate_names()), spec.dc)
     return P.outcome_probs(lam, mu, rho=rho)
 
 
