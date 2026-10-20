@@ -124,3 +124,48 @@ def test_no_leakage_with_promoted_spec():
     p2 = W.walk_forward(df2, 10, start, end, 0.5, 2.0, spec=PROMO)
     idx = p1.index[(df["Date"] < cut).loc[p1.index].values]
     np.testing.assert_allclose(p1.loc[idx].values, p2.loc[idx].values, atol=1e-7)
+
+
+def test_fixed_parameters_are_held():
+    T = 5
+    rng = np.random.default_rng(0)
+    theta = np.concatenate([P.random_theta(T, rng, sd=0.2), [0.1]])
+    h, a = P.round_robin_fixtures(T, 6)
+    X = (rng.random((len(h), 1)) < 0.3).astype(float)
+    lam, mu = P.rates(theta, h, a, T, X)
+    x, y = rng.poisson(lam), rng.poisson(mu)
+    idx = 2 + 2 * T
+    res = P.fit(h, a, x, y, np.ones(len(h)), T, 1.0, X=X, fixed={idx: -0.4})
+    assert res.theta[idx] == pytest.approx(-0.4)
+    free = P.fit(h, a, x, y, np.ones(len(h)), T, 1.0, X=X)
+    assert res.loglik <= free.loglik + 1e-9  # constraining cannot raise the maximum
+
+
+def test_two_stage_offsets_use_slow_decay_and_stay_fixed(tmp_path):
+    _promotion_league(seed=5).to_csv(tmp_path / "m.csv", index=False)
+    df, teams = W.load_matches(tmp_path / "m.csv")
+    T = len(teams)
+    ref = df["Date"].max() + pd.Timedelta(days=1)
+    spec = W.ModelSpec("two-stage", promoted=True, promo_xi=0.0)
+    two = W.fit_before(df, ref, T, xi=1.5, kappa=2.0, spec=spec)
+    # stage-1 offsets: fitted with no decay at all
+    stage1 = W.fit_before(df, ref, T, xi=0.0, kappa=2.0, spec=PROMO)
+    np.testing.assert_allclose(two.unpack_extra(T, 2, False)[0], stage1.unpack_extra(T, 2, False)[0])
+
+
+def test_two_stage_has_no_leakage():
+    df, _ = synthetic_league(n_seasons=5, seed=8)
+    df["closed_doors"] = 0
+    df["h_new"] = ((df["h"] < 2) & (df["Date"].dt.year % 2 == 0)).astype(int)
+    df["a_new"] = ((df["a"] < 2) & (df["Date"].dt.year % 2 == 0)).astype(int)
+    spec = W.ModelSpec("two-stage", promoted=True, promo_xi=0.0)
+    start, end = "2019-08-01", "2020-08-01"
+    p1 = W.walk_forward(df, 10, start, end, 0.5, 2.0, spec=spec)
+    df2 = df.copy()
+    cut = pd.Timestamp("2020-02-01")
+    late = df2["Date"] >= cut
+    df2.loc[late, ["FTHG", "FTAG"]] = df2.loc[late, ["FTAG", "FTHG"]].values + 3
+    df2["y"] = np.where(df2.FTHG > df2.FTAG, 0, np.where(df2.FTHG == df2.FTAG, 1, 2))
+    p2 = W.walk_forward(df2, 10, start, end, 0.5, 2.0, spec=spec)
+    idx = p1.index[(df["Date"] < cut).loc[p1.index].values]
+    np.testing.assert_allclose(p1.loc[idx].values, p2.loc[idx].values, atol=1e-7)

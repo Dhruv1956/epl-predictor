@@ -252,12 +252,15 @@ class FitResult:
         return unpack_extra(self.theta, T, k, dc)
 
 
-def fit(h, a, x, y, w, T, kappa, theta0=None, max_iter=1000, X=None, dc=False, Xm=None):
+def fit(h, a, x, y, w, T, kappa, theta0=None, max_iter=1000, X=None, dc=False, Xm=None, fixed=None):
     """Maximise the penalised weighted log-likelihood with L-BFGS-B.
 
     kappa must be positive: the ridge penalty is what makes the Model B maximiser unique
     (the likelihood alone cannot separate iota from the means of alpha and beta).
     For Model B the objective is concave, so the optimum found is the global one.
+
+    fixed : optional {index in theta: value}. Those parameters are held at the given values
+            (implemented as equal lower and upper bounds in L-BFGS-B), the rest are optimised.
     """
     if kappa <= 0:
         raise ValueError("kappa must be > 0 for a unique maximiser")
@@ -277,9 +280,13 @@ def fit(h, a, x, y, w, T, kappa, theta0=None, max_iter=1000, X=None, dc=False, X
         theta0 = np.zeros(n_params(T, k, dc))
         mean_goals = np.average(np.concatenate([x, y]), weights=np.concatenate([w, w]))
         theta0[0] = np.log(max(mean_goals, 1e-3))
-    bounds = None
+    theta0 = np.array(theta0, dtype=float)
+    bounds = [(None, None)] * len(theta0)
     if dc:
-        bounds = [(None, None)] * (len(theta0) - 1) + [RHO_BOUNDS]
+        bounds[-1] = RHO_BOUNDS
+    for idx, val in (fixed or {}).items():
+        theta0[idx] = val
+        bounds[idx] = (val, val)
 
     def neg(theta):
         ll, g = loglik_and_grad(theta, h, a, x, y, w, T, kappa, X=X, dc=dc, Xm=Xm)

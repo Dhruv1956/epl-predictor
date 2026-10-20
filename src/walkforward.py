@@ -41,6 +41,11 @@ class ModelSpec:
     closed_doors: bool = False  # separate home-advantage shift gamma for matches without fans
     dc: bool = False  # Dixon-Coles low-score correction (adds rho)
     promoted: bool = False  # learned attack and defence offsets for newly promoted teams
+    # If set, the promoted offsets are estimated in a first stage with their own decay rate promo_xi
+    # (0 = all history counts equally) and then held fixed while the other parameters are fitted
+    # with the usual decay xi. The offsets describe promoted clubs in general, which should change
+    # slowly, so they need not be forgotten as fast as team strengths.
+    promo_xi: float | None = None
 
     def covariate_names(self):
         """Names of the gamma coefficients, in theta order."""
@@ -139,6 +144,15 @@ def fit_before(df, ref_date, T, xi, kappa, theta0=None, spec=BASE):
     age = P.age_in_years(train["Date"].values, ref.to_datetime64())
     w = P.time_weights(age, xi)
     X, Xm = _covariates(train, spec)
+    fixed = None
+    if spec.promoted and spec.promo_xi is not None:
+        w1 = P.time_weights(age, spec.promo_xi)
+        stage1 = P.fit(
+            train["h"].values, train["a"].values, train["FTHG"].values, train["FTAG"].values,
+            w1, T, kappa, X=X, Xm=Xm, dc=spec.dc,
+        )
+        first = 2 + 2 * T + spec.covariate_names().index("promoted_attack")
+        fixed = {first: stage1.theta[first], first + 1: stage1.theta[first + 1]}
     return P.fit(
         train["h"].values,
         train["a"].values,
@@ -151,6 +165,7 @@ def fit_before(df, ref_date, T, xi, kappa, theta0=None, spec=BASE):
         X=X,
         Xm=Xm,
         dc=spec.dc,
+        fixed=fixed,
     )
 
 

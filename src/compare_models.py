@@ -36,6 +36,13 @@ SUITES = {
         ModelSpec("B + cd + promoted", closed_doors=True, promoted=True),
         ModelSpec("C + promoted", closed_doors=True, dc=True, promoted=True),
     ],
+    # does it help to estimate the promoted offsets with slower decay than the team strengths?
+    "promo2": [
+        ModelSpec("B + closed doors", closed_doors=True),
+        ModelSpec("promoted, joint", closed_doors=True, promoted=True),
+        ModelSpec("promoted, offsets xi=0", closed_doors=True, promoted=True, promo_xi=0.0),
+        ModelSpec("promoted, offsets xi=0.3", closed_doors=True, promoted=True, promo_xi=0.3),
+    ],
 }
 GRID = {"xi": [0.75, 1.0, 1.5, 2.0], "kappa": [2.0, 5.0]}
 
@@ -48,6 +55,23 @@ def paired(a, b):
     """Mean and standard error of the per-match difference a - b."""
     d = np.asarray(a) - np.asarray(b)
     return d.mean(), d.std(ddof=1) / np.sqrt(len(d))
+
+
+def subset_table(frame, probs, specs, ref, label):
+    """Paired log-loss differences vs the reference, split by 'involves a newly promoted team'."""
+    y = frame["y"].values
+    newcomer = ((frame["h_new"] + frame["a_new"]) > 0).values
+    ref_loss = per_match_loss(probs[ref.name].values, y)
+    rows = []
+    allm = np.ones(len(y), dtype=bool)
+    for name, mask in (("all matches", allm), ("involving a newly promoted team", newcomer), ("all other matches", ~newcomer)):
+        for spec in specs[1:]:
+            loss = per_match_loss(probs[spec.name].values, y)
+            d, se = paired(loss[mask], ref_loss[mask])
+            rows.append({"window": label, "subset": name, "matches": int(mask.sum()), "model": spec.name,
+                         "ref_log_loss": ref_loss[mask].mean(), "log_loss": loss[mask].mean(),
+                         "dLL_vs_ref": d, "se": se})
+    return pd.DataFrame(rows)
 
 
 def main(argv=None):
@@ -67,7 +91,7 @@ def main(argv=None):
     print(f"Loaded {len(df)} matches; {int(df['closed_doors'].sum())} flagged as played without fans; "
           f"{n_new} involve a newly promoted team")
 
-    chosen, test_probs, val_tables = {}, {}, []
+    chosen, test_probs, val_probs, val_tables = {}, {}, {}, []
     for spec in SPECS:
         print(f"\n== {spec.name} ==  validation {VAL_START} to {VAL_END}")
         val = grid_search(
@@ -78,6 +102,7 @@ def main(argv=None):
         chosen[spec.name] = (float(best["xi"]), float(best["kappa"]), float(best["log_loss"]))
         val_tables.append(val.assign(model=spec.name))
         print(f"  chosen xi={best['xi']} kappa={best['kappa']} (validation LL {best['log_loss']:.4f})")
+        val_probs[spec.name] = walk_forward(df, T, VAL_START, VAL_END, best["xi"], best["kappa"], spec=spec)
         test_probs[spec.name] = walk_forward(df, T, TEST_START, TEST_END, best["xi"], best["kappa"], spec=spec)
 
     # ---- test window ----------------------------------------------------------------------
@@ -113,16 +138,11 @@ def main(argv=None):
     print(table.to_string(index=False, float_format=lambda v: f"{v:.4f}"))
 
     # ---- where does the difference come from? matches with / without a newcomer ------------
-    sub_rows = []
-    for label, mask in (("involving a newly promoted team", newcomer), ("all other matches", ~newcomer)):
-        ref_l = base_loss[mask]
-        for spec in SPECS[1:]:
-            loss = per_match_loss(test_probs[spec.name].values[mask], y[mask])
-            d, se = paired(loss, ref_l)
-            sub_rows.append({"subset": label, "matches": int(mask.sum()), "model": spec.name,
-                             "ref_log_loss": ref_l.mean(), "log_loss": loss.mean(), "dLL_vs_ref": d, "se": se})
-    sub = pd.DataFrame(sub_rows)
-    print("\nSplit by subset of test matches:")
+    sub = pd.concat([
+        subset_table(df.loc[val_probs[REF.name].index], val_probs, SPECS, REF, "validation"),
+        subset_table(test, test_probs, SPECS, REF, "test"),
+    ])
+    print("\nSplit by matches involving a newcomer (each model uses its own chosen xi, kappa):")
     print(sub.to_string(index=False, float_format=lambda v: f"{v:.4f}"))
 
     # ---- fitted extras on all data --------------------------------------------------------
