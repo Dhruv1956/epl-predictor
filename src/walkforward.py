@@ -58,6 +58,9 @@ class ModelSpec:
 
 BASE = ModelSpec()
 
+# Current working model: closed-doors term + promoted-team offsets estimated in a first stage without decay.
+WORKING = ModelSpec("working: cd + promoted (2-stage)", closed_doors=True, promoted=True, promo_xi=0.0)
+
 
 def add_closed_doors_flag(df):
     """Add a 0/1 column marking matches played without fans (see CLOSED_DOORS_WINDOWS)."""

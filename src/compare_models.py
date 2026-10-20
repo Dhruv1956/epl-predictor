@@ -21,10 +21,7 @@ import pandas as pd
 from . import metrics as M
 from . import poisson as P
 from .run_walkforward import ODDS_SOURCES, TEST_END, TEST_START, VAL_END, VAL_START, md_table
-from .walkforward import BASE, ModelSpec, fit_before, grid_search, load_matches, walk_forward
-
-# current working model: closed-doors term + promoted-team offsets estimated in a first stage without decay
-WORKING = ModelSpec("working: cd + promoted (2-stage)", closed_doors=True, promoted=True, promo_xi=0.0)
+from .walkforward import BASE, WORKING, ModelSpec, fit_before, grid_search, load_matches, walk_forward
 
 SUITES = {
     # first spec in each suite is the reference for the paired differences
