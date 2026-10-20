@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -151,20 +152,35 @@ def append_frozen(new_rows, log_path):
 
 
 def score_log(log_path, matches_path):
-    """Join the log with played results. Returns (per-model scorecard DataFrame, joined rows)."""
+    """Join the log with played results. Returns (per-model scorecard DataFrame, joined rows).
+
+    A logged match is paired with the result of the same home/away fixture played within 7 days of the
+    logged date (a fixture moved for TV or weather still counts; each pairing occurs once a season).
+    If the log has no bookmaker odds for a match, the odds in the match table (Avg, else B365) are used:
+    those are captured later than the prediction, so they are a slightly stricter benchmark.
+    """
     log = pd.read_csv(log_path)
     df, _ = load_matches(matches_path)
-    played = df.dropna(subset=["FTHG", "FTAG"])[["Date", "HomeTeam", "AwayTeam", "y"]]
+    odds_cols = [c for _, cols in ODDS_PRIORITY for c in cols if c in df.columns]
+    played = df.dropna(subset=["FTHG", "FTAG"])[["Date", "HomeTeam", "AwayTeam", "y"] + odds_cols]
     log["match_date"] = pd.to_datetime(log["match_date"])
-    joined = log.merge(played, left_on=["match_date", "home", "away"], right_on=["Date", "HomeTeam", "AwayTeam"])
+    joined = log.merge(played, left_on=["home", "away"], right_on=["HomeTeam", "AwayTeam"])
+    joined = joined[(joined["Date"] - joined["match_date"]).abs() <= pd.Timedelta(days=7)].copy()
+    book = ["bookH", "bookD", "bookA"]
+    for _, cols in ODDS_PRIORITY:
+        if not all(c in joined.columns for c in cols):
+            continue
+        need = joined[book].isna().any(axis=1) & joined[cols].notna().all(axis=1)
+        if need.any():
+            joined.loc[need, book] = M.implied_probs(joined.loc[need, cols].values.astype(float))
     rows = []
     for version, g in joined.groupby("model_version"):
         y = g["y"].values.astype(int)
         p = g[["pH", "pD", "pA"]].values
         row = {"model": version, "matches": len(g), **M.scores(p, y)}
-        has_book = g[["bookH", "bookD", "bookA"]].notna().all(axis=1).values
+        has_book = g[book].notna().all(axis=1).values
         if has_book.sum() >= 2:
-            pb = g.loc[has_book, ["bookH", "bookD", "bookA"]].values
+            pb = g.loc[has_book, book].values
             lm = -np.log(np.clip(p[has_book][np.arange(has_book.sum()), y[has_book]], 1e-15, 1))
             lb = -np.log(np.clip(pb[np.arange(has_book.sum()), y[has_book]], 1e-15, 1))
             d = lm - lb
@@ -187,7 +203,8 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     if args.cmd == "predict":
-        now = datetime.now()
+        # football-data kickoff times are UK local time, so compare with the current UK time (not the Mac's clock)
+        now = datetime.now(ZoneInfo("Europe/London")).replace(tzinfo=None)
         fx = read_fixtures(args.fixtures)
         upcoming, started = (fx, fx.iloc[0:0]) if args.allow_past else drop_started(fx, now)
         if len(started):

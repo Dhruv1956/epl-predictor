@@ -102,3 +102,18 @@ def test_scoring_joins_results_and_bookmakers(league):
     p = joined[joined["model_version"] == "v1-working"][["pH", "pD", "pA"]].values
     expected = -np.mean(np.log(p[np.arange(len(y)), y]))
     assert card.loc[card["model"] == "v1-working", "log_loss"].iloc[0] == pytest.approx(expected)
+
+
+def test_scoring_tolerates_moved_fixtures_and_falls_back_to_match_table_odds(league):
+    tmp, full, upcoming, cut = league
+    rows, _ = _run_predict(tmp, datetime(2020, 1, 1))  # no bookmaker odds were logged
+    rows["match_date"] = (pd.to_datetime(rows["match_date"]) + pd.Timedelta(days=1)).dt.date.astype(str)
+    log = tmp / "log.csv"
+    L.append_frozen(rows, log)
+    with_odds = full.copy()
+    with_odds[["AvgH", "AvgD", "AvgA"]] = [2.0, 3.5, 3.8]
+    with_odds.to_csv(tmp / "matches.csv", index=False)
+    card, joined = L.score_log(log, tmp / "matches.csv")
+    assert (card["matches"] == len(upcoming)).all()
+    assert (card["book_matches"] == len(upcoming)).all()
+    assert joined[["bookH", "bookD", "bookA"]].notna().all().all()
