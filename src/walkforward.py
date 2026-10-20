@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -49,11 +50,21 @@ class ModelSpec:
     # If set, every team gets its own home advantage delta_t on top of the common eta, with a
     # ridge penalty kappa_home * sum(delta^2) (large kappa_home means "everyone the same").
     kappa_home: float | None = None
+    # If True, shots-on-target evidence feeds the goal model. Stage 0 fits a Poisson model to shots on
+    # target (home and away counts) on the training matches, with decay shots_xi and ridge shots_kappa.
+    # The resulting team strengths enter the goal rates as a covariate z with ONE learned coefficient c:
+    #   log lam += c * (shot_attack_home - shot_defence_away),  log mu += c * (shot_attack_away - shot_defence_home).
+    # The ordinary attack/defence parameters then act as ridge-shrunk deviations from the shot-implied
+    # strength, i.e. the prior mean of each team's strength comes from shots instead of being 0.
+    shots: bool = False
+    shots_xi: float = 0.5
+    shots_kappa: float = 5.0
 
     def covariate_names(self):
         """Names of the gamma coefficients, in theta order."""
         names = ["closed_doors"] if self.closed_doors else []
-        return names + (["promoted_attack", "promoted_defence"] if self.promoted else [])
+        names = names + (["promoted_attack", "promoted_defence"] if self.promoted else [])
+        return names + (["shots_strength"] if self.shots else [])
 
 
 BASE = ModelSpec()
@@ -101,6 +112,10 @@ def load_matches(path="data/processed/matches.csv"):
         raise ValueError(f"{path} is missing columns: {missing}")
     if df["Date"].isna().any():
         raise ValueError("Some dates could not be parsed")
+    shots_path = Path(path).with_name("shots.csv")
+    if "HST" not in df.columns and shots_path.exists():
+        shots = pd.read_csv(shots_path, parse_dates=["Date"])
+        df = df.merge(shots, on=["Date", "HomeTeam", "AwayTeam"], how="left")
     df = df.sort_values("Date", kind="stable").reset_index(drop=True)
     teams = sorted(set(df["HomeTeam"]) | set(df["AwayTeam"]))
     index = {t: i for i, t in enumerate(teams)}
@@ -120,14 +135,14 @@ def block_start_dates(df):
     return df.groupby(week_periods(df["Date"]))["Date"].transform("min")
 
 
-def _covariates(frame, spec):
+def _covariates(frame, spec, aux=None):
     """Covariates (X for log lam, Xm for log mu) sharing one gamma vector, or (None, None).
 
     closed_doors : X = flag, Xm = 0 (it only shifts the home side).
     promoted     : attack offset  pi_a: X = h_new,  Xm = a_new   (a newcomer's own scoring rate)
                    defence offset pi_b: X = -a_new, Xm = -h_new  (defence enters log rates with a minus)
     """
-    if not (spec.closed_doors or spec.promoted):
+    if not (spec.closed_doors or spec.promoted or spec.shots):
         return None, None
     cols_l, cols_m = [], []
     zero = np.zeros(len(frame))
@@ -138,7 +153,27 @@ def _covariates(frame, spec):
         hn, an = frame["h_new"].values.astype(float), frame["a_new"].values.astype(float)
         cols_l += [hn, -an]
         cols_m += [an, -hn]
+    if spec.shots:
+        if aux is None:
+            raise ValueError("a shots model needs the stage-0 shot strengths (aux)")
+        h, a = frame["h"].values, frame["a"].values
+        cols_l.append(aux["a"][h] - aux["b"][a])
+        cols_m.append(aux["a"][a] - aux["b"][h])
     return np.column_stack(cols_l), np.column_stack(cols_m)
+
+
+def fit_shot_strengths(train, ref, T, spec):
+    """Stage 0: Poisson model for shots on target. Returns {'a': attack, 'b': defence} (length T each)."""
+    tr = train.dropna(subset=["HST", "AST"])
+    if len(tr) == 0:
+        raise ValueError("no training matches with shots-on-target data")
+    age = P.age_in_years(tr["Date"].values, ref.to_datetime64())
+    w = P.time_weights(age, spec.shots_xi)
+    sub = ModelSpec(closed_doors=spec.closed_doors, promoted=spec.promoted)
+    X0, Xm0 = _covariates(tr, sub)
+    res0 = P.fit(tr["h"].values, tr["a"].values, tr["HST"].values, tr["AST"].values, w, T, spec.shots_kappa, X=X0, Xm=Xm0)
+    _, _, alpha, beta = res0.unpack(T)
+    return {"a": alpha, "b": beta}
 
 
 def fit_before(df, ref_date, T, xi, kappa, theta0=None, spec=BASE):
@@ -149,7 +184,8 @@ def fit_before(df, ref_date, T, xi, kappa, theta0=None, spec=BASE):
         raise ValueError(f"No matches before {ref.date()}")
     age = P.age_in_years(train["Date"].values, ref.to_datetime64())
     w = P.time_weights(age, xi)
-    X, Xm = _covariates(train, spec)
+    aux = fit_shot_strengths(train, ref, T, spec) if spec.shots else None
+    X, Xm = _covariates(train, spec, aux)
     fixed = None
     if spec.promoted and spec.promo_xi is not None:
         w1 = P.time_weights(age, spec.promo_xi)
@@ -159,7 +195,7 @@ def fit_before(df, ref_date, T, xi, kappa, theta0=None, spec=BASE):
         )
         first = 2 + 2 * T + spec.covariate_names().index("promoted_attack")
         fixed = {first: stage1.theta[first], first + 1: stage1.theta[first + 1]}
-    return P.fit(
+    res = P.fit(
         train["h"].values,
         train["a"].values,
         train["FTHG"].values,
@@ -174,11 +210,13 @@ def fit_before(df, ref_date, T, xi, kappa, theta0=None, spec=BASE):
         fixed=fixed,
         kappa_h=spec.kappa_home,
     )
+    res.aux = aux  # stage-0 shot strengths (None unless spec.shots); needed to predict
+    return res
 
 
-def predict_block(theta, block, T, spec=BASE):
+def predict_block(theta, block, T, spec=BASE, aux=None):
     """Outcome probabilities (n, 3) for a block of matches. Upcoming matches have fans (flag 0)."""
-    X, Xm = _covariates(block, spec)
+    X, Xm = _covariates(block, spec, aux)
     ha = spec.kappa_home is not None
     lam, mu = P.rates(theta, block["h"].values, block["a"].values, T, X, Xm, ha)
     _, rho = P.unpack_extra(theta, T, len(spec.covariate_names()), spec.dc, ha)
@@ -197,7 +235,7 @@ def walk_forward(df, T, start, end, xi, kappa, spec=BASE):
     for _, block in window.groupby(week_periods(window["Date"]), sort=True):
         res = fit_before(df, block["Date"].min(), T, xi, kappa, theta0=theta, spec=spec)
         theta = res.theta
-        probs.append(predict_block(theta, block, T, spec))
+        probs.append(predict_block(theta, block, T, spec, res.aux))
         indices.append(block.index.values)
     out = pd.DataFrame(np.vstack(probs), index=np.concatenate(indices), columns=["pH", "pD", "pA"])
     return out.sort_index()

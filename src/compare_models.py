@@ -50,6 +50,13 @@ SUITES = {
         ModelSpec("working + team home adv (kappa_h=60)", closed_doors=True, promoted=True, promo_xi=0.0, kappa_home=60.0),
         ModelSpec("working + team home adv (kappa_h=5)", closed_doors=True, promoted=True, promo_xi=0.0, kappa_home=5.0),
     ],
+    # do shots on target (from earlier matches) improve the goal model? shots_xi = how fast shot evidence decays
+    "shots": [
+        WORKING,
+        ModelSpec("working + shots (xi_s=0.3)", closed_doors=True, promoted=True, promo_xi=0.0, shots=True, shots_xi=0.3),
+        ModelSpec("working + shots (xi_s=0.6)", closed_doors=True, promoted=True, promo_xi=0.0, shots=True, shots_xi=0.6),
+        ModelSpec("working + shots (xi_s=1.0)", closed_doors=True, promoted=True, promo_xi=0.0, shots=True, shots_xi=1.0),
+    ],
 }
 GRID = {"xi": [0.75, 1.0, 1.5, 2.0], "kappa": [2.0, 5.0]}
 
@@ -72,6 +79,8 @@ def subset_table(frame, probs, specs, ref, label):
     rows = []
     allm = np.ones(len(y), dtype=bool)
     for name, mask in (("all matches", allm), ("involving a newly promoted team", newcomer), ("all other matches", ~newcomer)):
+        if mask.sum() < 2:
+            continue  # nothing to compare (e.g. no newly promoted teams in this data)
         for spec in specs[1:]:
             loss = per_match_loss(probs[spec.name].values, y)
             d, se = paired(loss[mask], ref_loss[mask])
@@ -93,6 +102,10 @@ def main(argv=None):
     out = Path(args.out_dir or ("reports/models" if args.suite == "ablation" else f"reports/models_{args.suite}"))
     out.mkdir(parents=True, exist_ok=True)
     df, teams = load_matches(args.data)
+    if any(sp.shots for sp in SPECS) and "HST" not in df.columns:
+        raise SystemExit("Shots data not found. Run `python -m src.add_shots` first (it writes data/processed/shots.csv).")
+    if any(sp.shots for sp in SPECS):
+        print(f"Shots-on-target data present for {df['HST'].notna().mean():.1%} of matches")
     T = len(teams)
     n_new = int(((df["h_new"] + df["a_new"]) > 0).sum())
     print(f"Loaded {len(df)} matches; {int(df['closed_doors'].sum())} flagged as played without fans; "

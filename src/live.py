@@ -112,8 +112,9 @@ def predict_fixtures(matches_path, fixtures, now, models=MODELS):
     rows = []
     for version, cfg in models.items():
         res = fit_before(combined, ref, T, cfg["xi"], cfg["kappa"], spec=cfg["spec"])
-        probs = predict_block(res.theta, block, T, cfg["spec"])
-        X, Xm = _covariates(block, cfg["spec"])
+        aux = getattr(res, "aux", None)
+        probs = predict_block(res.theta, block, T, cfg["spec"], aux)
+        X, Xm = _covariates(block, cfg["spec"], aux)
         lam, mu = P.rates(res.theta, block["h"].values, block["a"].values, T, X, Xm, cfg["spec"].kappa_home is not None)
         n_train = int((combined["Date"] < ref).sum())
         last_train = combined.loc[combined["Date"] < ref, "Date"].max()
