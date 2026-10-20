@@ -29,6 +29,7 @@ from . import poisson as P
 from .walkforward import (
     BASE,
     WORKING,
+    ModelSpec,
     _covariates,
     add_closed_doors_flag,
     add_newcomer_flags,
@@ -42,6 +43,12 @@ from .walkforward import (
 MODELS = {
     "v0-poisson": {"spec": BASE, "xi": 1.0, "kappa": 5.0},
     "v1-working": {"spec": WORKING, "xi": 1.0, "kappa": 5.0},
+    # v1 plus shots on target from earlier matches (stage-0 shot strengths feed the goal rates)
+    "v2-shots": {
+        "spec": ModelSpec("working + shots (xi_s=1.0)", closed_doors=True, promoted=True, promo_xi=0.0, shots=True, shots_xi=1.0),
+        "xi": 1.5,
+        "kappa": 5.0,
+    },
 }
 ODDS_PRIORITY = [("Avg", ["AvgH", "AvgD", "AvgA"]), ("B365", ["B365H", "B365D", "B365A"])]
 LOG_COLUMNS = [
@@ -82,7 +89,7 @@ def drop_started(fx, now):
     return fx[~started].reset_index(drop=True), fx[started]
 
 
-def predict_fixtures(matches_path, fixtures, now, models=MODELS):
+def predict_fixtures(matches_path, fixtures, now, models=MODELS, stamp=None):
     """Fit every registered model on all played matches and predict the fixtures. Returns log rows."""
     df, teams = load_matches(matches_path)
     played = df.dropna(subset=["FTHG", "FTAG"])
@@ -91,6 +98,12 @@ def predict_fixtures(matches_path, fixtures, now, models=MODELS):
     unknown = sorted((set(fixtures["HomeTeam"]) | set(fixtures["AwayTeam"])) - set(index))
     if unknown:
         raise ValueError(f"Teams not found in the match table (check spelling): {unknown}")
+    if any(cfg["spec"].shots for cfg in models.values()):
+        if "HST" not in df.columns:
+            raise ValueError("A shots model is registered but shots data is missing: run `python -m src.add_shots`.")
+        recent = played[played["Date"] >= played["Date"].max() - pd.Timedelta(days=21)]
+        if recent["HST"].isna().any():
+            raise ValueError("Shots data is out of date for recent matches: run `python -m src.add_shots` after refreshing results.")
     if fixtures["Date"].max() > played["Date"].max() + pd.Timedelta(days=120):
         raise ValueError("Fixtures are more than 120 days after the last played match: refresh the data first.")
 
@@ -122,7 +135,7 @@ def predict_fixtures(matches_path, fixtures, now, models=MODELS):
             source, odds = _pick_odds(f)
             book = M.implied_probs(odds[None, :])[0] if odds is not None else [np.nan] * 3
             rows.append({
-                "logged_at": now.isoformat(timespec="seconds"), "model_version": version,
+                "logged_at": stamp or now.isoformat(timespec="seconds"), "model_version": version,
                 "xi": cfg["xi"], "kappa": cfg["kappa"], "match_date": f["Date"].date().isoformat(),
                 "kickoff": "" if pd.isna(f["kickoff"]) else f["kickoff"].isoformat(timespec="minutes"),
                 "home": f["HomeTeam"], "away": f["AwayTeam"], "lam": lam[i], "mu": mu[i],
@@ -205,14 +218,15 @@ def main(argv=None):
 
     if args.cmd == "predict":
         # football-data kickoff times are UK local time, so compare with the current UK time (not the Mac's clock)
-        now = datetime.now(ZoneInfo("Europe/London")).replace(tzinfo=None)
+        now_aware = datetime.now(ZoneInfo("Europe/London"))
+        now = now_aware.replace(tzinfo=None)
         fx = read_fixtures(args.fixtures)
         upcoming, started = (fx, fx.iloc[0:0]) if args.allow_past else drop_started(fx, now)
         if len(started):
             print(f"Skipping {len(started)} fixture(s) that have already started.")
         if upcoming.empty:
             raise SystemExit("No upcoming fixtures to predict.")
-        rows = predict_fixtures(args.matches, upcoming, now)
+        rows = predict_fixtures(args.matches, upcoming, now, stamp=now_aware.isoformat(timespec="seconds"))
         added, frozen = append_frozen(rows, args.log)
         print(f"Logged {added} new prediction row(s); {frozen} already frozen (not changed). Log: {args.log}")
         show = rows[rows["model_version"] == "v1-working"][["match_date", "home", "away", "pH", "pD", "pA", "book_source", "bookH", "bookD", "bookA"]]

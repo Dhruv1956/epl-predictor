@@ -16,6 +16,8 @@ def league(tmp_path):
     """A 6-season league CSV. The last two calendar weeks become 'fixtures' (results hidden)."""
     full = _promotion_league(n_seasons=6, seed=2)
     full = full.sort_values("Date", kind="stable").reset_index(drop=True)
+    shot_rng = np.random.default_rng(0)
+    full["HST"], full["AST"] = shot_rng.poisson(4.5, len(full)), shot_rng.poisson(3.8, len(full))
     cut = full["Date"].max() - pd.Timedelta(days=13)
     played, upcoming = full[full["Date"] < cut], full[full["Date"] >= cut]
     played.to_csv(tmp_path / "matches.csv", index=False)
@@ -117,3 +119,13 @@ def test_scoring_tolerates_moved_fixtures_and_falls_back_to_match_table_odds(lea
     assert (card["matches"] == len(upcoming)).all()
     assert (card["book_matches"] == len(upcoming)).all()
     assert joined[["bookH", "bookD", "bookA"]].notna().all().all()
+
+
+def test_stale_shots_data_is_rejected(league):
+    tmp, *_ = league
+    m = pd.read_csv(tmp / "matches.csv")
+    m.loc[m.index[-5:], "HST"] = np.nan  # the most recent results lack shot data
+    m.to_csv(tmp / "matches.csv", index=False)
+    fx = L.read_fixtures(tmp / "fixtures.csv")
+    with pytest.raises(ValueError, match="add_shots"):
+        L.predict_fixtures(tmp / "matches.csv", fx, datetime(2020, 1, 1))
