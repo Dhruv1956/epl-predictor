@@ -1,0 +1,373 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{mathpazo}
+\usepackage{amsmath,amssymb}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{setspace}
+\usepackage{booktabs,array}
+\usepackage{xcolor}
+\usepackage[most]{tcolorbox}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage[colorlinks=true,linkcolor=accent,urlcolor=accent]{hyperref}
+
+\definecolor{accent}{HTML}{1F4E79}
+\definecolor{accent2}{HTML}{8A4B08}
+
+\setstretch{1.3}
+\setlength{\parskip}{0.4em}
+\setlength{\parindent}{0pt}
+
+\titleformat{\section}{\Large\bfseries\color{accent}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\large\bfseries\color{accent2}}{\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{2.2ex plus 0.5ex}{1ex}
+\titlespacing*{\subsection}{0pt}{1.8ex plus 0.4ex}{0.6ex}
+
+\newtcolorbox{keybox}[1][]{colback=accent!5,colframe=accent,boxrule=0.9pt,arc=2pt,
+  left=8pt,right=8pt,top=5pt,bottom=5pt,#1}
+
+\setlist[itemize]{itemsep=0.1em,topsep=0.2em}
+\setlist[enumerate]{itemsep=0.1em,topsep=0.2em}
+
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\tabfont}{\small\setstretch{1.05}}
+
+\begin{document}
+
+\begin{center}
+{\Huge\bfseries\color{accent} EPL Match Outcome Predictor}\\[0.6em]
+{\Large Checkpoint 1: Problem, Data Audit and Baselines}\\[0.6em]
+{\large Dhruv Upadhyaya \quad$\cdot$\quad 20 October 2026 \quad$\cdot$\quad End of Phase 1}
+\end{center}
+
+\vspace{0.5em}
+
+\begin{keybox}
+\textbf{Where we are.} Twelve seasons of Premier League results and odds (4{,}240 matches) are
+downloaded, cleaned and audited, and the data is sound. The bar to beat is a log loss of about
+$0.95$ to $0.97$, which is what bookmaker odds achieve on 2023/24 to 2025/26. The plan
+for Phase 2 is a from-scratch Poisson model with time decay, fitted by maximum likelihood with
+hand-derived gradients.
+\end{keybox}
+
+%% ------------------------------------------------------------------
+\section{Problem statement}
+
+For every Premier League match $i$ we observe the date $t_i$, the home team $h(i)$, the away team
+$a(i)$, the full-time goals $(x_i,y_i)$ and the result $r_i\in\{H,D,A\}$. The task is to output,
+\emph{before kickoff}, a probability vector
+\[
+\mathbf p_i=(p_i^{H},\,p_i^{D},\,p_i^{A}),\qquad p_i^{k}\ge 0,\qquad p_i^{H}+p_i^{D}+p_i^{A}=1,
+\]
+using only matches $j$ with $t_j<t_i$. We predict probabilities, not just a winner, because
+football is noisy: a hard prediction throws away how confident the model is, and probabilities
+can be checked for calibration.
+
+\subsection{How we score a model}
+
+Let $N$ be the number of test matches. Three metrics are used.
+\[
+\mathrm{LL}=-\frac{1}{N}\sum_{i=1}^{N}\log p_i^{\,r_i}
+\]
+\[
+\mathrm{BS}=\frac{1}{N}\sum_{i=1}^{N}\ \sum_{k\in\{H,D,A\}}\bigl(p_i^{k}-\mathbf 1[r_i=k]\bigr)^{2}
+\]
+\[
+\mathrm{Acc}=\frac{1}{N}\sum_{i=1}^{N}\mathbf 1\bigl[\arg\max_k p_i^{k}=r_i\bigr]
+\]
+Log loss (LL) and the Brier score (BS) are strictly proper scoring rules: the expected score is
+minimised only by reporting the true probabilities, so a model cannot gain by exaggerating its
+confidence. Accuracy is reported for readability but is not used to fit or select models, since it
+ignores probabilities entirely.
+
+\begin{keybox}
+\textbf{Reference values for a model with no information} (all three outcomes at $\tfrac13$):
+\[
+\mathrm{LL}=\log 3\approx 1.0986,\qquad
+\mathrm{BS}=\Bigl(1-\frac13\Bigr)^{2}+2\Bigl(\frac13\Bigr)^{2}=\frac{6}{9}=\frac23 .
+\]
+\end{keybox}
+
+%% ------------------------------------------------------------------
+\section{Data and audit}
+
+\textbf{Source.} football-data.co.uk, Premier League files \texttt{E0\_<season>.csv}, seasons
+2015/16 to 2026/27. Full seasons have 380 matches each, so
+\[
+11\times 380 + 60 = 4{,}240 \text{ matches},
+\]
+where the 60 are the partial 2026/27 season (last match on 12 October 2026). The raw files are never
+edited; \texttt{src/data.py} writes a cleaned table to
+\texttt{data/\allowbreak processed/\allowbreak matches.csv}.
+
+\textbf{Cleaning rules applied by the loader.}
+\begin{itemize}
+\item Files are read as \texttt{utf-8-sig}, because four of them start with a byte-order mark.
+\item Dates are parsed day-first, accepting both \texttt{dd/mm/yy} and \texttt{dd/mm/yyyy}.
+\item The \texttt{Time} column is not required, since it is absent in 2015/16 to 2018/19.
+\item Only core columns and the B365, Average and Pinnacle (PS) odds are kept. Same-match
+statistics such as shots and possession are dropped on purpose: they are unknown before kickoff and
+would leak the result into the features.
+\end{itemize}
+
+\textbf{Structural checks, all passed.}
+\begin{itemize}
+\item The result column agrees with the goals in every match, and there are no duplicate fixtures.
+\item Every full season has 20 teams and 19 home games per team.
+\item Every season transition has exactly 3 promoted and 3 relegated teams.
+\item Team names are spelled consistently across seasons (35 distinct names in total). The only
+similar pair flagged, West Brom and West Ham, is a false positive.
+\end{itemize}
+
+\subsection{Findings that affect the modelling}
+
+\begingroup
+\tabfont
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.43\linewidth}>{\raggedright\arraybackslash}p{0.5\linewidth}@{}}
+\toprule
+\textbf{Finding} & \textbf{Consequence}\\
+\midrule
+Average odds are missing in all 1{,}520 matches of 2015/16 to 2018/19. &
+Odds baselines can only be computed from 2019/20 onward with Average odds; B365 is complete.\\
+PS odds stop on 8 January 2026. The 170 matches from 17 January to 24 May 2026, and all of 2026/27,
+have none. &
+PS comparisons use only matches that have PS odds (970 in the test window).\\
+2026/27 is partial: 60 matches, 3 home games per team. &
+Excluded from the baselines. It supplies recent form only.\\
+2020/21: away wins 40.3\% against 37.9\% home wins. &
+Supports giving closed-doors matches their own home-advantage term.\\
+Mean goals jump in 2023/24 to 1.80 (home) and 1.48 (away), against about 1.5 and 1.2 earlier. &
+The league-wide goal rate is not constant, so time decay or a per-season intercept is needed.\\
+\bottomrule
+\end{tabular}
+\endgroup
+
+%% ------------------------------------------------------------------
+\section{Baselines}
+
+\subsection{Bookmaker probabilities}
+
+Decimal odds $o_H,o_D,o_A$ imply probabilities $1/o_k$ that sum to more than one. The excess is the
+bookmaker's margin (the overround),
+\[
+\Omega=\sum_{k\in\{H,D,A\}}\frac{1}{o_k}-1 .
+\]
+Removing it by proportional normalisation gives
+\[
+p^{k}=\frac{1/o_k}{\displaystyle\sum_{j\in\{H,D,A\}}1/o_j}.
+\]
+The mean margin is 5.5\% for B365, 4.8\% for Average and 3.5\% for PS. Proportional normalisation
+is the simplest choice; it ignores the favourite--longshot bias, and alternatives (Shin's method, the
+power method) can be tried later.
+
+\subsection{Results on 2023/24 to 2025/26}
+
+All baselines are scored on the last three completed seasons (1{,}140 matches). The class
+frequencies for the second row come from 2015/16 to 2022/23 only, so no test information is used.
+
+\begin{center}
+\tabfont
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Predictor} & \textbf{Matches} & \textbf{Log loss} & \textbf{Accuracy}\\
+\midrule
+Uniform, $\tfrac13$ each & 1{,}140 & 1.0986 & 43.2\%\\
+Training class frequencies (H 0.448, D 0.234, A 0.318) & 1{,}140 & 1.0728 & 43.2\%\\
+B365, margin removed & 1{,}140 & 0.9662 & 54.2\%\\
+Average, margin removed & 1{,}140 & 0.9650 & 54.2\%\\
+Pinnacle (PS), margin removed & 970 & 0.9501 & 55.6\%\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The accuracy in the first two rows equals that of always predicting a home win (43.2\%); that rule
+has infinite log loss because it assigns probability zero to draws and away wins.
+
+\begin{keybox}
+\textbf{The bar to beat.} On the 970 matches that have all three sources, the bookmakers agree to
+within $0.001$ (log loss $0.9501$ to $0.9510$). That subset is the fairest benchmark, because the PS
+figure above is flattered by which matches it happens to cover. On the full 1{,}140 matches, the
+Average-odds log loss of $0.965$ is the reference. Bookmakers also use injuries and team news, which
+our model will not have, so matching them within about $0.01$ from past results alone would
+already be a strong outcome.
+\end{keybox}
+
+%% ------------------------------------------------------------------
+\section{Model roadmap and the mathematics}
+
+\subsection{Model A: multinomial logistic regression (baseline)}
+
+With a feature vector $\mathbf z_i$ built only from earlier matches (rolling form, an Elo
+difference, home flag),
+\[
+p_i^{k}=\frac{\exp(\mathbf w_k^{\top}\mathbf z_i)}{\displaystyle\sum_{j\in\{H,D,A\}}\exp(\mathbf w_j^{\top}\mathbf z_i)} .
+\]
+Softmax is unchanged when the same vector is added to every $\mathbf w_k$, so one class is fixed as a
+reference, $\mathbf w_A=\mathbf 0$. Minimising the cross-entropy (the log loss) gives the gradient
+\[
+\frac{\partial\,\mathrm{LL}}{\partial\mathbf w_k}=\frac{1}{N}\sum_{i=1}^{N}\bigl(p_i^{k}-\mathbf 1[r_i=k]\bigr)\mathbf z_i .
+\]
+
+\subsection{Model B: independent Poisson goals}
+
+Model the goals of each match as independent Poisson variables, $X_i\sim\mathrm{Pois}(\lambda_i)$ for
+the home side and $Y_i\sim\mathrm{Pois}(\mu_i)$ for the away side, with
+\[
+\log\lambda_i=\iota+\eta+\alpha_{h(i)}-\beta_{a(i)}
+\]
+\[
+\log\mu_i=\iota+\alpha_{a(i)}-\beta_{h(i)} .
+\]
+Here $\iota$ is the league-wide log goal rate, $\eta$ is the home advantage, $\alpha_t$ is the attack
+strength of team $t$ and $\beta_t$ its defensive strength (larger means fewer goals conceded). The
+model has $2+2T$ parameters for $T$ teams.
+
+\textbf{Identifiability.} The rates $\lambda_i$ and $\mu_i$ depend on $\iota$ and on the averages
+$\bar\alpha$ and $\bar\beta$ of the strengths only through the combination $\iota+\bar\alpha-\bar\beta$.
+So the likelihood alone cannot separate two directions of change: adding $c$ to every $\alpha_t$ and
+every $\beta_t$, and adding $d$ to $\iota$ while subtracting $d$ from every $\alpha_t$. A ridge penalty
+on $\alpha$ and $\beta$ (but not on $\iota$) removes both. Every match has exactly one home and one
+away team, so summing the gradient equations given below over teams gives
+\[
+\sum_t\frac{\partial\ell}{\partial\alpha_t}=\frac{\partial\ell}{\partial\iota}-2\kappa\sum_t\alpha_t
+\]
+\[
+\sum_t\frac{\partial\ell}{\partial\beta_t}=-\frac{\partial\ell}{\partial\iota}-2\kappa\sum_t\beta_t .
+\]
+At the optimum every gradient vanishes, so $\sum_t\alpha_t=\sum_t\beta_t=0$ and $\iota$ carries the whole
+league-wide level. The same penalty is a Gaussian prior that shrinks teams with little data (such as
+newly promoted ones) towards the league average.
+
+\textbf{Weighted penalised log-likelihood.} Let $T^{*}$ be the prediction date, measured in years, and
+let
+\[
+w_i=e^{-\xi\,(T^{*}-t_i)},\qquad \tau_{1/2}=\frac{\ln 2}{\xi},
+\]
+so recent matches count more and $\tau_{1/2}$ is the half-life of a match's influence. With
+$\theta=(\iota,\eta,\boldsymbol\alpha,\boldsymbol\beta)$,
+\[
+\ell(\theta)=\sum_i w_i\Bigl[x_i\log\lambda_i-\lambda_i+y_i\log\mu_i-\mu_i-\log(x_i!\,y_i!)\Bigr]
+-\kappa\sum_t\bigl(\alpha_t^2+\beta_t^2\bigr).
+\]
+
+\textbf{Gradient.} Because $\log\lambda_i$ and $\log\mu_i$ are linear in $\theta$, we have
+$\partial\lambda_i/\partial\theta_k=\lambda_i\,\partial\log\lambda_i/\partial\theta_k$, and the
+Poisson terms collapse to residuals. Define the home and away residuals
+\[
+e_i=x_i-\lambda_i,\qquad f_i=y_i-\mu_i .
+\]
+
+\begin{keybox}
+\vspace{-0.6em}
+\begin{align*}
+\frac{\partial\ell}{\partial\iota}&=\sum_i w_i\,(e_i+f_i)\\[2pt]
+\frac{\partial\ell}{\partial\eta}&=\sum_i w_i\,e_i\\[2pt]
+\frac{\partial\ell}{\partial\alpha_t}&=\sum_{i:\,h(i)=t}w_i\,e_i+\sum_{i:\,a(i)=t}w_i\,f_i-2\kappa\,\alpha_t\\[2pt]
+\frac{\partial\ell}{\partial\beta_t}&=-\sum_{i:\,a(i)=t}w_i\,e_i-\sum_{i:\,h(i)=t}w_i\,f_i-2\kappa\,\beta_t
+\end{align*}
+\vspace{-1.2em}
+\end{keybox}
+
+Setting these to zero has a clear reading: without the penalty, the weighted totals of expected
+goals must equal the weighted totals of observed goals, overall (for $\iota$), at home (for $\eta$),
+and for each team's attack and defence.
+
+\textbf{Concavity.} Write $\mathbf a_i$ and $\mathbf b_i$ for the (sparse, $0/\pm1$) coefficient vectors
+of $\log\lambda_i$ and $\log\mu_i$ in $\theta$. The Hessian is
+\[
+\nabla^2\ell=-\sum_i w_i\bigl(\lambda_i\,\mathbf a_i\mathbf a_i^{\top}+\mu_i\,\mathbf b_i\mathbf b_i^{\top}\bigr)-2\kappa\,I_{\alpha,\beta},
+\]
+which is negative semi-definite. The two flat directions of the likelihood described above both change
+$\alpha$ or $\beta$, where the ridge term is strictly negative, so $\ell$ is strictly concave. It
+therefore has a unique maximiser, and a quasi-Newton method such as L-BFGS reaches it. The analytic
+gradient is checked against finite differences in
+\texttt{tests/\allowbreak test\_poisson.py}.
+
+\textbf{From goals to outcomes.} For independent Poisson goals,
+\[
+P(X=x,Y=y)=\frac{e^{-\lambda}\lambda^{x}}{x!}\cdot\frac{e^{-\mu}\mu^{y}}{y!},
+\]
+and the three outcome probabilities are sums over the score grid,
+\[
+p^{H}=\sum_{x>y}P(x,y),\qquad p^{D}=\sum_{x=y}P(x,y),\qquad p^{A}=\sum_{x<y}P(x,y),
+\]
+truncated at about ten goals per side, where the lost probability is negligible. For the independent
+model, $X-Y$ follows a Skellam distribution, which gives an exact cross-check of the truncated sums.
+
+\subsection{Model C: Dixon--Coles correction}
+
+Independent Poisson models misprice low scores, especially draws. Dixon and Coles multiply the
+probability of the four lowest scorelines by a factor $\tau$:
+\[
+\tau(x,y)=
+\begin{cases}
+1-\lambda\mu\rho & (x,y)=(0,0)\\
+1+\lambda\rho & (x,y)=(0,1)\\
+1+\mu\rho & (x,y)=(1,0)\\
+1-\rho & (x,y)=(1,1)\\
+1 & \text{otherwise.}
+\end{cases}
+\]
+All factors must stay positive, which restricts the dependence parameter to
+\[
+\max\!\Bigl(-\frac{1}{\lambda},-\frac{1}{\mu}\Bigr)\le\rho\le\min\!\Bigl(\frac{1}{\lambda\mu},\,1\Bigr).
+\]
+The correction conserves total probability. Using $P(0,0)=e^{-\lambda-\mu}$,
+$P(0,1)=e^{-\lambda-\mu}\mu$, $P(1,0)=e^{-\lambda-\mu}\lambda$ and $P(1,1)=e^{-\lambda-\mu}\lambda\mu$,
+the net change is
+\[
+e^{-\lambda-\mu}\,\rho\,\bigl(-\lambda\mu+\lambda\mu+\lambda\mu-\lambda\mu\bigr)=0 .
+\]
+The log-likelihood gains the term $\log\tau(x_i,y_i)$ for each match, and $\rho$ is fitted together
+with $\theta$. The time-decay rate $\xi$ and the ridge strength $\kappa$ are chosen by validation,
+not set by hand.
+
+\subsection{Evaluation protocol}
+
+Models are compared by \emph{walk-forward validation}: for each block of matchweeks in the test
+window, fit on all earlier matches, predict the block, then move forward. This mimics real use,
+avoids leakage, and gives about 1{,}140 out-of-sample predictions for the 2023/24 to 2025/26 window.
+Random shuffling of matches is never used.
+
+%% ------------------------------------------------------------------
+\section{Open decisions and risks}
+
+\begin{enumerate}
+\item \textbf{Which odds set is the benchmark.} The columns kept so far are pre-match odds. Recent
+football-data.co.uk files also carry closing-odds columns, which are usually sharper. If they are
+present in our files, they define a stricter bar, and the loader should be extended.
+\item \textbf{Closed-doors window.} The home-advantage indicator should be defined by match date,
+covering the restart of 2019/20 in June 2020 and most of 2020/21, with exceptions where limited
+crowds were allowed. The exact dates must be confirmed before the feature is built.
+\item \textbf{The 2023/24 goal-rate shift.} Options are time decay alone, or an extra per-season
+intercept. Validation decides.
+\item \textbf{Team-specific home advantage.} It adds $T$ more noisy parameters. We will test it
+against a single $\eta$ rather than assume it helps.
+\item \textbf{Draws are hard.} Even good models rarely make draws the most likely outcome, so
+accuracy will understate model quality. Log loss and Brier score are the primary metrics.
+\end{enumerate}
+
+%% ------------------------------------------------------------------
+\section{Phase 2 plan}
+
+\begin{enumerate}
+\item Write the Poisson model in \texttt{src/poisson.py}: log-likelihood and analytic gradient,
+with a finite-difference gradient check.
+\item Simulate matches from a Poisson model with known parameters, fit, and confirm the parameters are
+recovered and the error shrinks as the sample grows.
+\item Build Model A with rolling-form and Elo features, as the first real comparison.
+\item Fit Model B on the real data and run walk-forward validation against the baselines above.
+\item Add the Dixon--Coles term and time decay (Model C); choose $\xi$ and $\kappa$ by validation.
+\item Keep a log of every bug and fix for the final report.
+\end{enumerate}
+
+\vspace{0.5em}
+\begin{center}
+\small\color{gray} Figures in this report are taken from the output of \texttt{src/audit.py}
+(\texttt{reports/checkpoint1\_tables.md}).
+\end{center}
+
+\end{document}
