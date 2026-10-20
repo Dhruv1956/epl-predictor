@@ -1,4 +1,4 @@
-"""Walk-forward validation for the Poisson model.
+"""Walk-forward validation for the Poisson models.
 
 For each block of matches (one calendar week), the model is fitted using ONLY matches played
 strictly before the block's first date, with exponential time-decay weights measured from that
@@ -7,12 +7,14 @@ and nothing from the future is ever seen.
 
 Expected columns in the match table (see load_matches):
     Date (datetime), HomeTeam, AwayTeam, FTHG, FTAG, FTR in {H, D, A}
-and, added by load_matches: h, a (team indices 0..T-1) and y (outcome code 0/1/2).
+and, added by load_matches: h, a (team indices 0..T-1), y (outcome code 0/1/2) and
+closed_doors (1 if the match was played without fans, else 0).
 """
 
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -22,6 +24,34 @@ from . import poisson as P
 
 REQUIRED_COLUMNS = ["Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG", "FTR"]
 RESULT_CODE = {"H": 0, "D": 1, "A": 2}
+
+# Matches played without fans: [start, end) date windows.
+#   * 2019/20 resumed behind closed doors on 17 June 2020 (after the March suspension).
+#   * 2020/21 was played mostly without fans. Home supporters returned for the rounds from
+#     17 May 2021 (18-19 May and 23 May), so the window ends there.
+# A brief spell of limited crowds in December 2020 is not modelled (treated as closed doors).
+CLOSED_DOORS_WINDOWS = [("2020-06-17", "2021-05-17")]
+
+
+@dataclass(frozen=True)
+class ModelSpec:
+    """Which parts of the model are switched on."""
+
+    name: str = "B: Poisson"
+    closed_doors: bool = False  # separate home-advantage shift gamma for matches without fans
+    dc: bool = False  # Dixon-Coles low-score correction (adds rho)
+
+
+BASE = ModelSpec()
+
+
+def add_closed_doors_flag(df):
+    """Add a 0/1 column marking matches played without fans (see CLOSED_DOORS_WINDOWS)."""
+    flag = np.zeros(len(df), dtype=int)
+    for start, end in CLOSED_DOORS_WINDOWS:
+        flag[((df["Date"] >= pd.Timestamp(start)) & (df["Date"] < pd.Timestamp(end))).values] = 1
+    df["closed_doors"] = flag
+    return df
 
 
 def load_matches(path="data/processed/matches.csv"):
@@ -38,7 +68,7 @@ def load_matches(path="data/processed/matches.csv"):
     df["h"] = df["HomeTeam"].map(index).astype(int)
     df["a"] = df["AwayTeam"].map(index).astype(int)
     df["y"] = df["FTR"].map(RESULT_CODE).astype(int)
-    return df, teams
+    return add_closed_doors_flag(df), teams
 
 
 def week_periods(dates):
@@ -51,8 +81,12 @@ def block_start_dates(df):
     return df.groupby(week_periods(df["Date"]))["Date"].transform("min")
 
 
-def fit_before(df, ref_date, T, xi, kappa, theta0=None):
-    """Fit the Poisson model on all matches strictly before ref_date, weights decayed from ref_date."""
+def _covariates(frame, spec):
+    return frame[["closed_doors"]].values.astype(float) if spec.closed_doors else None
+
+
+def fit_before(df, ref_date, T, xi, kappa, theta0=None, spec=BASE):
+    """Fit on all matches strictly before ref_date, weights decayed from ref_date."""
     ref = pd.Timestamp(ref_date)
     train = df[df["Date"] < ref]
     if len(train) == 0:
@@ -68,10 +102,21 @@ def fit_before(df, ref_date, T, xi, kappa, theta0=None):
         T,
         kappa,
         theta0=theta0,
+        X=_covariates(train, spec),
+        dc=spec.dc,
     )
 
 
-def walk_forward(df, T, start, end, xi, kappa):
+def predict_block(theta, block, T, spec=BASE):
+    """Outcome probabilities (n, 3) for a block of matches. Upcoming matches have fans (flag 0)."""
+    X = _covariates(block, spec)
+    lam, mu = P.rates(theta, block["h"].values, block["a"].values, T, X)
+    k = 1 if spec.closed_doors else 0
+    _, rho = P.unpack_extra(theta, T, k, spec.dc)
+    return P.outcome_probs(lam, mu, rho=rho)
+
+
+def walk_forward(df, T, start, end, xi, kappa, spec=BASE):
     """Predict every match with start <= Date < end, one weekly block at a time.
 
     Returns a DataFrame indexed like df with columns pH, pD, pA.
@@ -81,24 +126,22 @@ def walk_forward(df, T, start, end, xi, kappa):
     theta = None  # warm start: the previous block's optimum is a good initial guess
     indices, probs = [], []
     for _, block in window.groupby(week_periods(window["Date"]), sort=True):
-        block_start = block["Date"].min()
-        res = fit_before(df, block_start, T, xi, kappa, theta0=theta)
+        res = fit_before(df, block["Date"].min(), T, xi, kappa, theta0=theta, spec=spec)
         theta = res.theta
-        lam, mu = P.rates(theta, block["h"].values, block["a"].values, T)
-        probs.append(P.outcome_probs(lam, mu))
+        probs.append(predict_block(theta, block, T, spec))
         indices.append(block.index.values)
     out = pd.DataFrame(np.vstack(probs), index=np.concatenate(indices), columns=["pH", "pD", "pA"])
     return out.sort_index()
 
 
-def grid_search(df, T, start, end, xis, kappas, on_result=None):
+def grid_search(df, T, start, end, xis, kappas, on_result=None, spec=BASE):
     """Walk-forward log loss on [start, end) for every (xi, kappa). Returns a DataFrame."""
     rows = []
     total = len(xis) * len(kappas)
     for xi in xis:
         for kappa in kappas:
             t0 = time.time()
-            wf = walk_forward(df, T, start, end, xi, kappa)
+            wf = walk_forward(df, T, start, end, xi, kappa, spec=spec)
             y = df.loc[wf.index, "y"].values
             row = {"xi": xi, "kappa": kappa, **M.scores(wf.values, y), "seconds": time.time() - t0}
             rows.append(row)
