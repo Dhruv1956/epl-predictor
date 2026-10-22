@@ -9,11 +9,14 @@ it was frozen, and results are joined on afterwards.
 
 from __future__ import annotations
 
+import json
 import math
 from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy.stats import poisson
 
 from . import live as L
 from .explain import read_explanations
@@ -42,6 +45,32 @@ def clean(o):
     return o
 
 
+def score_grid(lam, mu, n=10, top=3):
+    """Exact-score probabilities of independent Poissons, grouped by result.
+
+    A result's chance is the TOTAL of all the scorelines that produce it, so the likeliest single score
+    (often 1-1) can belong to a result that is not the likeliest one. Returns, for each result (H, D, A),
+    its total probability, its `top` likeliest scores and the probability of all its other scores, plus the
+    five likeliest scores overall and the single likeliest one.
+
+    Uses the same 0..10 goals grid, renormalised, as `poisson.outcome_probs`, so the groups add up to exactly the
+    probabilities that were frozen in the log."""
+    i = np.arange(n + 1)
+    G = np.outer(poisson.pmf(i, lam), poisson.pmf(i, mu))
+    G = G / G.sum()
+    masks = {"H": i[:, None] > i[None, :], "D": i[:, None] == i[None, :], "A": i[:, None] < i[None, :]}
+    out = {}
+    for key, mask in masks.items():
+        cells = sorted(((float(G[a, b]), int(a), int(b)) for a, b in zip(*np.nonzero(mask))), reverse=True)
+        out[key] = {"p": float(G[mask].sum()), "top": [[a, b, p] for p, a, b in cells[:top]],
+                    "other": float(sum(p for p, _, _ in cells[top:]))}
+    flat = sorted(((float(G[a, b]), int(a), int(b)) for a in range(n + 1) for b in range(n + 1)), reverse=True)
+    out["all_top"] = [[a, b, p] for p, a, b in flat[:5]]
+    out["best"] = out["all_top"][0]
+    out["best_key"] = "H" if out["best"][0] > out["best"][1] else "D" if out["best"][0] == out["best"][1] else "A"
+    return out
+
+
 def _loss(p, y):
     return float(-math.log(max(p[y], 1e-15)))
 
@@ -59,7 +88,22 @@ def matchweek_number(played, home, away, date):
     return max(n(home), n(away)) + 1
 
 
-def build_data(log_path, explanations_path, matches_path, now=None):
+def _backtest_section(backtest_dir, matches_path, now):
+    """Weeks + scoreboard for the backtest, or None if the backtest files are not there."""
+    d = Path(backtest_dir)
+    log, expl, meta = d / "predictions_log.csv", d / "explanations.jsonl", d / "meta.json"
+    if not (log.exists() and expl.exists()):
+        return None
+    sub = build_data(log, expl, matches_path, now=now)  # same code path as the live data
+    info = json.loads(meta.read_text()) if meta.exists() else {}
+    return {"weeks": sub["weeks"], "scoreboard": sub["scoreboard"], "season": info.get("season", sub["season"]),
+            "rounds": info.get("rounds", []), "skipped": info.get("skipped", []),
+            "generated_at": info.get("generated_at", "")}
+
+
+def build_data(log_path, explanations_path, matches_path, now=None, backtest_dir=None):
+    """Build the page data. With `backtest_dir` (the output of src.backtest_weeks), also include a "backtest"
+    section built by exactly the same code from the backtest log, so both are scored identically."""
     log = pd.read_csv(log_path)
     if log.empty:
         raise ValueError("The prediction log is empty: freeze some predictions first.")
@@ -87,6 +131,8 @@ def build_data(log_path, explanations_path, matches_path, now=None):
             if v in g.index:
                 r = g.loc[v]
                 m["versions"][v] = {"p": [r["pH"], r["pD"], r["pA"]], "lam": r["lam"], "mu": r["mu"]}
+        if HEADLINE in m["versions"]:
+            m["grid"] = score_grid(m["versions"][HEADLINE]["lam"], m["versions"][HEADLINE]["mu"])
         # book odds frozen at prediction time (any version row carries the same values)
         frozen_book = g[["bookH", "bookD", "bookA"]].iloc[0].tolist()
         frozen_source = g["book_source"].iloc[0] if "book_source" in g.columns else None
@@ -145,7 +191,11 @@ def build_data(log_path, explanations_path, matches_path, now=None):
     cfg = L.MODELS[HEADLINE]
     decay = {"goals_months": math.log(2) / cfg["xi"] * 12,
              "shots_months": math.log(2) / cfg["spec"].shots_xi * 12 if cfg["spec"].shots else None}
+    backtest = None
+    if backtest_dir is not None:
+        backtest = _backtest_section(backtest_dir, matches_path, now)
     return clean({
+        "backtest": backtest,
         "decay": decay,
         "generated_at": now.isoformat(timespec="minutes"), "season": str(played["Season"].iloc[-1]) if "Season" in played.columns else "",
         "data_through": played["Date"].max().strftime("%Y-%m-%d"), "n_train_latest": int(log["n_train"].max()),

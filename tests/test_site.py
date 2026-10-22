@@ -111,3 +111,33 @@ def test_matchweek_number_counts_games_already_played(league):
             before = cur[cur["Date"] < pd.Timestamp(m["date"])]
             g = lambda t: ((before["HomeTeam"] == t) | (before["AwayTeam"] == t)).sum()
             assert m["matchweek"] == max(g(m["home"]), g(m["away"])) + 1
+
+
+def test_score_groups_add_up_to_the_logged_result_probabilities(league):
+    tmp, *_ = league
+    log, expl, _ = _freeze(tmp)
+    d = SD.build_data(log, expl, tmp / "matches.csv")
+    for w in d["weeks"]:
+        for m in w["matches"]:
+            g, p = m["grid"], m["versions"][SD.HEADLINE]["p"]
+            for key, want in zip("HDA", p):
+                assert g[key]["p"] == pytest.approx(want, abs=1e-6)                 # same numbers the log froze
+                parts = sum(t[2] for t in g[key]["top"]) + g[key]["other"]
+                assert parts == pytest.approx(g[key]["p"], abs=1e-12)               # top scores + the rest = the total
+                tops = [t[2] for t in g[key]["top"]]
+                assert tops == sorted(tops, reverse=True)
+            assert sum(g[k]["p"] for k in "HDA") == pytest.approx(1.0, abs=1e-6)
+            assert g["all_top"][0] == g["best"]
+            assert max(t[2] for k in "HDA" for t in g[k]["top"]) == pytest.approx(g["best"][2])
+
+
+def test_likeliest_score_can_be_a_draw_while_a_win_is_the_likeliest_result():
+    """Man United v Bournemouth (v2): expected goals 1.852 and 1.272. A win is 51% but 1-1 is the likeliest single score."""
+    lam, mu = 1.852, 1.272
+    g = SD.score_grid(lam, mu)
+    assert g["best"][:2] == [1, 1] and g["best_key"] == "D"
+    assert g["best"][2] == pytest.approx(math.exp(-(lam + mu)) * lam * mu, rel=1e-4)      # P(1-1) = e^-(l+m) * l * m
+    assert g["H"]["p"] > g["A"]["p"] > g["D"]["p"]
+    assert g["H"]["top"][0][:2] == [2, 1] and g["H"]["top"][0][2] < g["best"][2]          # no single win beats 1-1 ...
+    assert g["H"]["p"] > g["D"]["p"] * 2                                                  # ... but the wins add up to far more
+    assert g["H"]["p"] == pytest.approx(0.510, abs=1e-3) and g["D"]["p"] == pytest.approx(0.227, abs=1e-3)

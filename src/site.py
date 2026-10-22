@@ -36,9 +36,11 @@ def main(argv=None):
     ap.add_argument("--log", default="live/predictions_log.csv")
     ap.add_argument("--explanations", default="live/explanations.jsonl")
     ap.add_argument("--matches", default="data/processed/matches.csv")
+    ap.add_argument("--backtest-dir", default="backtest", help="output of src.backtest_weeks; skipped if missing")
     ap.add_argument("--out-dir", default="docs")
     args = ap.parse_args(argv)
-    data = build_data(args.log, args.explanations, args.matches)
+    bt = Path(args.backtest_dir) if (Path(args.backtest_dir) / "predictions_log.csv").exists() else None
+    data = build_data(args.log, args.explanations, args.matches, backtest_dir=bt)
     frag = render(data)
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -48,6 +50,9 @@ def main(argv=None):
     n = sum(w["n"] for w in data["weeks"])
     print(f"Wrote {out}/index.html and {out}/artifact.html: {len(data['weeks'])} week(s), {n} match(es), "
           f"{data['scoreboard']['n']} scored.")
+    if data.get("backtest"):
+        b = data["backtest"]
+        print(f"Backtest included: {len(b['weeks'])} round(s), {b['scoreboard']['n']} scored.")
 
 
 if __name__ == "__main__":

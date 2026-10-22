@@ -62,6 +62,15 @@ tr.hl td:first-child{font-weight:600}
 .tab .a{font:700 .95rem/1.1 var(--f-display)}
 .tab .b{font:400 .7rem/1.3 var(--f-mono);color:var(--muted)}
 .tab[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 -3px 0 var(--accent)}
+.btbanner{border:1px dashed var(--accent);background:var(--soft);border-radius:12px;padding:12px 16px;font-size:.88rem;color:var(--ink);max-width:76ch}
+.btbanner b{font-weight:600}
+.cmpcard{padding:22px 24px;display:grid;gap:14px}
+.cmpcard h2{font-size:1.15rem}
+td.best{font-weight:700;color:var(--accent-ink)}
+.cmpcard .hds{display:none}
+.cmpcard .se{display:block;font-size:.72em;color:var(--muted);font-weight:400}
+tr.sum td{border-top:1px solid var(--line);background:var(--soft)}
+tr.sum td:first-child{font-weight:600}
 .weekhead{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;padding:4px 2px}
 .weekhead h2{font-size:1.5rem}
 .weekhead .sum{font-size:.88rem;color:var(--muted)}
@@ -72,7 +81,7 @@ tr.hl td:first-child{font-weight:600}
 .chip2{font:500 .7rem/1 var(--f-mono);letter-spacing:.05em;text-transform:uppercase;padding:6px 9px;border-radius:6px;border:1px dashed var(--muted);color:var(--muted)}
 .chip2.ft{border-style:solid;border-color:var(--ink);color:var(--ink)}
 .teams{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:12px;align-items:end}
-.team .nm{font:800 clamp(1.5rem,5vw,2.2rem)/1.05 var(--f-display);letter-spacing:-.03em;overflow-wrap:anywhere}
+.team .nm{font:800 clamp(1.5rem,5vw,2.2rem)/1.05 var(--f-display);letter-spacing:-.03em;overflow-wrap:break-word;hyphens:manual}
 .team.away{text-align:right}
 .vs{font:500 .8rem/1 var(--f-mono);color:var(--muted);padding-bottom:6px}
 .formrow{display:flex;gap:3px;margin-top:8px;flex-wrap:wrap}
@@ -114,10 +123,18 @@ svg.fig{display:block;width:100%;height:auto;overflow:visible}
 .facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 18px}
 .fact .v{font:700 1.3rem/1.1 var(--f-display);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .fact .k{font-size:.78rem;color:var(--muted);line-height:1.35;margin-top:3px}
-.sl{display:grid;grid-template-columns:110px minmax(0,1fr) 44px;gap:12px;align-items:center;margin-top:7px;font:400 .8rem/1 var(--f-mono)}
+.sl{display:grid;grid-template-columns:150px minmax(0,1fr) 44px;gap:12px;align-items:center;margin-top:9px;font:400 .8rem/1 var(--f-mono)}
 .sl .tr{height:11px;background:var(--soft);border-radius:4px;overflow:hidden}
 .sl .tr b{display:block;height:100%;border-radius:4px}
 .sl .p{text-align:right;color:var(--muted)}
+.sl .lb b{font-weight:600}
+.sl .lb small{display:block;margin-top:3px;font:400 .68rem/1.1 var(--f-body);color:var(--muted)}
+.ob{display:grid;gap:5px;margin-top:10px}
+.obh{display:flex;align-items:center;gap:8px;font-weight:600;font-size:.92rem}
+.obh b{margin-left:auto;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.obar{display:flex;gap:2px;height:13px;background:var(--soft);border-radius:6px;overflow:hidden}
+.obar b{display:block;height:100%}
+.ob p{font-size:.78rem;color:var(--muted);line-height:1.5}
 .ranks{display:grid;gap:14px}
 .rank{display:grid;gap:7px}
 .rank .rt{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:.86rem}
@@ -138,12 +155,19 @@ svg.fig{display:block;width:100%;height:auto;overflow:visible}
 .out{display:grid;gap:6px}
 footer{font-size:.8rem;color:var(--muted);padding:4px 4px 0;display:grid;gap:6px}
 @media (max-width:620px){
-  .mcard,.board{padding-left:16px;padding-right:16px}
+  .mcard,.board,.cmpcard{padding-left:16px;padding-right:16px}
+  .team .nm{font-size:1.3rem}
+  .cmpcard table{min-width:0}
+  .cmpcard th,.cmpcard td{padding:7px 4px;font-size:.76rem}
+  .cmpcard th{font-size:.6rem;letter-spacing:.02em}
+  .cmpcard td:first-child{font-size:.84rem;padding-left:0}
+  .cmpcard .hdl{display:none}.cmpcard .hds{display:inline}
   .formtable{grid-template-columns:minmax(0,1fr)}
   .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
   .cmp3 .barrow{grid-template-columns:104px minmax(0,1fr)}
-  .sl{grid-template-columns:96px minmax(0,1fr) 40px}
+  .sl{grid-template-columns:112px minmax(0,1fr) 40px}
 }
+@media (max-width:380px){.team .nm{font-size:1.1rem}}
 @media (prefers-reduced-motion:reduce){.whybtn svg{transition:none}}
 </style>
 
@@ -155,10 +179,13 @@ footer{font-size:.8rem;color:var(--muted);padding:4px 4px 0;display:grid;gap:6px
     <span class="stamp" id="stamp"></span>
   </header>
 
-  <section class="card board" id="board" aria-label="Season scoreboard"></section>
+  <nav class="tabs" id="modes" aria-label="Live predictions or backtest" hidden></nav>
+  <div class="btbanner" id="btbanner" hidden></div>
+  <section class="card board" id="board" aria-label="Scoreboard"></section>
 
   <nav class="tabs" id="tabs" aria-label="Matchweeks"></nav>
   <div class="weekhead"><h2 id="wkTitle"></h2><span class="sum" id="wkSum"></span></div>
+  <section class="card cmpcard" id="cmp" aria-label="Round comparison" hidden></section>
   <div id="matches" style="display:grid;gap:16px"></div>
 
   <footer>
@@ -171,7 +198,8 @@ footer{font-size:.8rem;color:var(--muted);padding:4px 4px 0;display:grid;gap:6px
 <script>
 (function(){
 var D=JSON.parse(document.getElementById("data").textContent);
-var NS="http://www.w3.org/2000/svg",H=D.headline;
+var NS="http://www.w3.org/2000/svg",H=D.headline,MODE="live";
+function SRC(){return MODE==="bt"&&D.backtest?D.backtest:{weeks:D.weeks,scoreboard:D.scoreboard};}
 var MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],DAY=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 function $(id){return document.getElementById(id);}
 function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
@@ -192,32 +220,33 @@ function winner(m){var y=m.result.y;return y===0?m.home:y===2?m.away:"Draw";}
 $("season").textContent=D.season+" season";
 $("stamp").textContent="Updated "+D.generated_at.replace("T"," ").slice(0,16)+" UTC · results through "+fdate(D.data_through)+" · models fitted on "+D.n_train_latest.toLocaleString("en-GB")+" matches";
 function board(){
-  var b=D.scoreboard,box=$("board");
-  if(!b.n){box.innerHTML='<h2>Season scoreboard</h2><p class="note">No predictions have been scored yet. The first matches of <b>Matchweek '+D.weeks[0].matchweek+'</b> kick off on '+fdate(D.weeks[0].first)+'. When they finish, each model’s log loss, Brier score and hit rate appear here, next to the bookmakers’.</p>';return;}
+  var S=SRC(),b=S.scoreboard,box=$("board"),ttl=MODE==="bt"?"Backtest scoreboard":"Season scoreboard";
+  if(!b.n){box.innerHTML='<h2>'+ttl+'</h2><p class="note">No predictions have been scored yet. The first matches of <b>Matchweek '+S.weeks[0].matchweek+'</b> kick off on '+fdate(S.weeks[0].first)+'. When they finish, each model’s log loss, Brier score and hit rate appear here, next to the bookmakers’.</p>';return;}
   var rows=b.models.map(function(m){var hl=m.version===H;
     return '<tr'+(hl?' class="hl"':'')+'><td>'+esc(m.label)+'</td><td>'+pc(m.accuracy)+'</td><td>'+m.log_loss.toFixed(3)+'</td><td>'+m.brier.toFixed(3)+'</td><td>'+(m.gap!=null?sgn(m.gap,3)+' ± '+m.gap_se.toFixed(3):'–')+'</td></tr>';}).join("");
   if(b.book)rows+='<tr><td>Bookmakers (average odds)</td><td>'+pc(b.book.accuracy)+'</td><td>'+b.book.log_loss.toFixed(3)+'</td><td>'+b.book.brier.toFixed(3)+'</td><td>–</td></tr>';
   var pct=Math.min(100,b.n/b.needed*100);
-  box.innerHTML='<div><h2>Season scoreboard</h2><p class="note" style="margin-top:6px">'+b.n+' match'+(b.n===1?'':'es')+' scored so far. Lower log loss and Brier are better; the gap compares each model with the bookmakers on the same matches (negative means we did better).</p></div>'+
+  box.innerHTML='<div><h2>'+ttl+'</h2><p class="note" style="margin-top:6px">'+b.n+' match'+(b.n===1?'':'es')+' scored'+(MODE==="bt"?' in this backtest':' so far')+'. Lower log loss and Brier are better; the gap compares each model with the bookmakers on the same matches (negative means we did better).</p></div>'+
    '<div class="tablewrap"><table><thead><tr><th>Model</th><th>Right outcome</th><th>Log loss</th><th>Brier</th><th>Gap to bookmakers</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
    '<div><div class="meter" role="img" aria-label="Matches scored out of '+b.needed+' needed"><b style="width:'+pct.toFixed(1)+'%"></b></div>'+
    '<p class="note" style="margin-top:8px"><b>'+b.n+' of about '+b.needed+'</b> matches scored. It takes roughly that many to tell a 0.0165 gap to the bookmakers from noise, so early numbers can swing a lot.'+
    (b.book&&b.book.before_kickoff<b.book.n?' Bookmaker odds for '+(b.book.n-b.book.before_kickoff)+' of these matches were taken from the match table after the fact, a slightly stricter benchmark.':'')+'</p></div>';
 }
-board();
 
 /* ---------- weeks ---------- */
 var cur=0;
-(function pick(){var h=location.hash.replace("#",""),i;
-  for(i=0;i<D.weeks.length;i++){if("mw"+D.weeks[i].matchweek===h){cur=i;return;}}
-  for(i=0;i<D.weeks.length;i++){if(D.weeks[i].n_played<D.weeks[i].n){cur=i;return;}}
-  cur=D.weeks.length-1;})();
+function pick(){var W=SRC().weeks,h=location.hash.replace("#",""),pre=MODE==="bt"?"bt":"mw",i;
+  for(i=0;i<W.length;i++){if(pre+W[i].matchweek===h){cur=i;return;}}
+  if(MODE==="live"){for(i=0;i<W.length;i++){if(W[i].n_played<W[i].n){cur=i;return;}}}
+  cur=W.length-1;}
+if(D.backtest&&/^bt\d+$/.test(location.hash.replace("#","")))MODE="bt";
+pick();
 function fr(w){var a=fdate(w.first).split(" "),b=fdate(w.last).split(" ");return w.first===w.last?a[1]+" "+a[2]:a[1]+"–"+b[1]+" "+b[2];}
 function tabs(){var t=$("tabs");t.innerHTML="";
-  D.weeks.forEach(function(w,i){var b=document.createElement("button");b.type="button";b.className="tab";b.setAttribute("aria-pressed",i===cur);
+  SRC().weeks.forEach(function(w,i){var b=document.createElement("button");b.type="button";b.className="tab";b.setAttribute("aria-pressed",i===cur);
     var st=w.n_played===0?"to play":w.n_played<w.n?w.n_played+" of "+w.n+" played":"all played";
     b.innerHTML='<span class="a">Matchweek '+w.matchweek+'</span><span class="b">'+fr(w)+' · '+st+'</span>';
-    b.addEventListener("click",function(){cur=i;try{history.replaceState(null,"","#mw"+w.matchweek);}catch(e){}render();});t.appendChild(b);});}
+    b.addEventListener("click",function(){cur=i;try{history.replaceState(null,"","#"+(MODE==="bt"?"bt":"mw")+w.matchweek);}catch(e){}render();});t.appendChild(b);});}
 
 function weekSummary(w){
   var done=w.matches.filter(function(m){return m.result;});
@@ -234,7 +263,7 @@ function weekSummary(w){
 function chips(rows){return rows.slice(-6).map(function(r){return '<span class="chip '+r.res+'" title="'+esc(r.opp)+' '+(r.home?"(H) ":"(A) ")+r.gf+'-'+r.ga+'">'+r.res+'</span>';}).join("");}
 function card(m,idx){
   var v=m.versions[H],ex=m.explanation,p=share(v.p,100,0),art=document.createElement("article");art.className="card mcard";art.id="m"+idx;
-  var best=[0,0,0];for(var i=0;i<=8;i++)for(var j=0;j<=8;j++){var q=pois(v.lam,i)*pois(v.mu,j);if(q>best[2])best=[i,j,q];}
+  var g=m.grid,best=g.best,fk=["H","D","A"][v.p.indexOf(Math.max.apply(null,v.p))],rname={H:m.home+" win",D:"a draw",A:m.away+" win"};
   var status=m.result?'<span class="chip2 ft">Full time '+m.result.hg+'–'+m.result.ag+'</span>':'<span class="chip2">Locked · pending</span>';
   var h='<div class="mtop"><span class="eyebrow">'+fdate(m.date)+(ftime(m)?' · '+ftime(m):'')+'</span>'+status+'</div>'+
    '<div class="teams"><div class="team home"><div class="nm">'+esc(m.home)+'</div>'+(ex?'<div class="formrow">'+chips(ex.form.home)+'</div>':'')+'</div><div class="vs">v</div>'+
@@ -243,7 +272,8 @@ function card(m,idx){
    '<div class="pr d"><div class="big">'+p[1]+'%</div><div class="lab"><i class="sw" style="background:var(--od)"></i>Draw</div></div>'+
    '<div class="pr a"><div class="big">'+p[2]+'%</div><div class="lab"><i class="sw" style="background:var(--oa)"></i>'+esc(m.away)+' win</div></div></div>'+
    '<div class="bar"><span style="flex:'+v.p[0]+';background:var(--oh)"></span><span style="flex:'+v.p[1]+';background:var(--od)"></span><span style="flex:'+v.p[2]+';background:var(--oa)"></span></div>'+
-   '<p class="meta">Expected goals <b>'+v.lam.toFixed(2)+' – '+v.mu.toFixed(2)+'</b> · likeliest score <b>'+best[0]+'–'+best[1]+'</b> ('+pc(best[2])+')</p>';
+   '<p class="meta">Expected goals <b>'+v.lam.toFixed(2)+' – '+v.mu.toFixed(2)+'</b> · likeliest single score <b>'+best[0]+'–'+best[1]+'</b> ('+pc(best[2])+')'+
+   (g.best_key!==fk?'<br><span class="fine">'+esc(rname[fk].charAt(0).toUpperCase()+rname[fk].slice(1))+' is still the likeliest result ('+pc(g[fk].p)+'): a result adds up many scores, so no single score of it beats '+best[0]+'–'+best[1]+'. Likeliest score for it: <b>'+g[fk].top[0][0]+'–'+g[fk].top[0][1]+'</b> ('+pc(g[fk].top[0][2])+').</span>':'')+'</p>';
   if(m.result){var y=m.result.y,gave=v.p[y];
     h+='<p class="resline"><b>'+(y===1?'Draw':esc(winner(m))+' won')+'.</b> We gave that outcome '+pc(gave)+'. '+(v.hit?'It was our favoured outcome.':'It was not our favoured outcome.')+
       (m.book?' The bookmakers gave it '+pc(m.book.p[y])+' ('+m.book.when+').':'')+'</p>';}
@@ -295,9 +325,19 @@ function favourite(m,p){
   var tone=mx>=0.6?"strong favourites":mx>=0.45?"favourites":"only slight favourites";
   return esc(name)+" are "+tone+" at "+pc(mx)+".";
 }
+function scoreBlock(m){
+  var g=m.grid,sc=function(t){return t[0]+"–"+t[1];},pp=function(x){return (x*100).toFixed(1)+"%";};
+  var tag=function(t){return t[0]>t[1]?m.home+" win":t[0]===t[1]?"draw":m.away+" win";};
+  var col=function(t){return t[0]>t[1]?"var(--oh)":t[0]===t[1]?"var(--od)":"var(--oa)";};
+  var rows=[["H",m.home+" win","var(--oh)"],["D","Draw","var(--od)"],["A",m.away+" win","var(--oa)"]].map(function(o){var x=g[o[0]];
+    var segs=x.top.map(function(t,i){return '<b title="'+sc(t)+'" style="width:'+(t[2]*100).toFixed(2)+'%;background:'+o[2]+';opacity:'+(1-i*0.2)+'"></b>';}).join("")+'<b title="all other scores" style="width:'+(x.other*100).toFixed(2)+'%;background:'+o[2]+';opacity:.28"></b>';
+    return '<div class="ob"><div class="obh"><i class="sw" style="background:'+o[2]+'"></i><span>'+esc(o[1])+'</span><b>'+pc(x.p)+'</b></div><div class="obar" aria-hidden="true">'+segs+'</div><p>'+x.top.map(function(t){return sc(t)+" "+pp(t[2]);}).join(" · ")+' · all other scores '+pp(x.other)+'</p></div>';}).join("");
+  var bars=g.all_top.map(function(t){return '<div class="sl"><span class="lb"><b>'+sc(t)+'</b><small>'+esc(tag(t))+'</small></span><span class="tr"><b style="width:'+(t[2]/g.all_top[0][2]*100).toFixed(1)+'%;background:'+col(t)+'"></b></span><span class="p">'+pp(t[2])+'</span></div>';}).join("");
+  return '<div><h4 style="font-size:1rem;margin-top:6px">Where each result’s chance comes from</h4><p class="fine" style="margin-top:4px">A result is the <b>total</b> of every scoreline that produces it. Bars are drawn to the same scale: the darker pieces are the likeliest scores, and the faint piece is all the rest.</p>'+rows+'</div>'+
+   '<div><h4 style="font-size:1rem;margin-top:14px">The five likeliest single scores</h4>'+bars+'</div>';
+}
 function drawer(box,m){
   var v=m.versions[H],ex=m.explanation,html="";
-  var best=[];for(var i=0;i<=8;i++)for(var j=0;j<=8;j++)best.push([i,j,pois(v.lam,i)*pois(v.mu,j)]);best.sort(function(a,b){return b[2]-a[2]});
   var cs0=0,cs1=0,o25=0,btts=0;for(var a=0;a<=10;a++)for(var b=0;b<=10;b++){var q=pois(v.lam,a)*pois(v.mu,b);if(b===0)cs0+=q;if(a===0)cs1+=q;if(a+b>=3)o25+=q;if(a>0&&b>0)btts+=q;}
   if(m.result){
     var y=m.result.y,rows=D.versions.map(function(k){var d=m.versions[k];return d?'<div class="barrow"><span>'+esc(D.labels[k])+'</span><span class="mono">gave '+pc(d.p[y])+' · log loss '+d.loss.toFixed(2)+' · '+(d.hit?'right outcome':'wrong outcome')+'</span></div>':'';}).join("");
@@ -311,7 +351,7 @@ function drawer(box,m){
    '<div class="fact"><div class="v">'+pc(o25)+'</div><div class="k">three or more goals</div></div>'+
    '<div class="fact"><div class="v">'+pc(btts)+'</div><div class="k">both teams score</div></div>'+
    '<div class="fact"><div class="v">'+pc(1-cs0)+'</div><div class="k">'+esc(m.away)+' score at least once</div></div></div>'+
-   '<div>'+best.slice(0,5).map(function(r){var col=r[0]>r[1]?"var(--oh)":r[0]===r[1]?"var(--od)":"var(--oa)";return '<div class="sl"><span>'+esc(m.home.split(" ").pop())+' '+r[0]+'–'+r[1]+'</span><span class="tr"><b style="width:'+(r[2]/best[0][2]*100).toFixed(1)+'%;background:'+col+'"></b></span><span class="p">'+(r[2]*100).toFixed(1)+'%</span></div>';}).join("")+'</div>'+
+   scoreBlock(m)+
    '<p class="fine">Even the likeliest exact score is rarely more than a 1 in 6 chance. Football is low scoring, so no single scoreline is ever likely.</p></div>';
   if(!ex){box.innerHTML=html+'<div class="reason"><p>A detailed explanation was not recorded for this match.</p></div>';return;}
   var rk=ex.ranks,n=ex.n_clubs,hasShots=rk.home.shot_att!=null;
@@ -339,15 +379,57 @@ function drawer(box,m){
   html+='<div class="reason"><span class="num">REASON 5</span><h4>Three model versions, one headline</h4><p>We run three versions side by side and score all of them. The headline above is <b>'+esc(D.labels[H])+'</b>. The versions that use goals alone pull every rating closer to average, because goals are noisy; the shots version also uses shots on target, a steadier measure. Which approach predicts better over a season is exactly what the scoreboard at the top will show.</p><div class="cmp3">'+
    D.versions.map(function(k){var d=m.versions[k];if(!d)return"";var s=share(d.p,100,0);return '<div class="barrow"><span style="font-weight:'+(k===H?600:400)+';color:'+(k===H?"var(--ink)":"var(--muted)")+'">'+esc(D.labels[k])+'</span><div class="stack"><span style="flex:'+d.p[0]+';background:var(--oh);color:var(--toh)">'+s[0]+'%</span><span style="flex:'+d.p[1]+';background:var(--od);color:var(--tod)">'+s[1]+'%</span><span style="flex:'+d.p[2]+';background:var(--oa);color:var(--toa)">'+s[2]+'%</span></div></div>';}).join("")+'</div></div>';
   var pm=Math.max.apply(null,v.p),lowMu=Math.min(v.lam,v.mu),lowTeam=v.lam<v.mu?m.home:m.away;
-  html+='<div class="reason"><span class="num">HOW SURE ARE WE?</span><h4>A favourite is not a certainty</h4><p>A chance of '+pc(pm)+' for the likeliest outcome means that in roughly '+Math.round((1-pm)*100)+' of 100 matches like this one, something else happens. Even with only '+lowMu.toFixed(1)+' expected goals, '+esc(lowTeam)+' still score at least once about '+pc(1-Math.exp(-lowMu))+' of the time, and one goal can turn a match. Forecasts like this are judged over hundreds of matches, not one.</p><p>The model has no information on injuries, suspensions, line-ups, tiredness or tactics, and the bookmakers price some of that in. Frozen '+fdate(m.logged_at.slice(0,10))+', using '+m.n_train.toLocaleString("en-GB")+' matches up to '+fdate(m.last_train_date)+'.</p></div>';
+  html+='<div class="reason"><span class="num">HOW SURE ARE WE?</span><h4>A favourite is not a certainty</h4><p>A chance of '+pc(pm)+' for the likeliest outcome means that in roughly '+Math.round((1-pm)*100)+' of 100 matches like this one, something else happens. Even with only '+lowMu.toFixed(1)+' expected goals, '+esc(lowTeam)+' still score at least once about '+pc(1-Math.exp(-lowMu))+' of the time, and one goal can turn a match. Forecasts like this are judged over hundreds of matches, not one.</p><p>The model has no information on injuries, suspensions, line-ups, tiredness or tactics, and the bookmakers price some of that in. '+(MODE==="bt"?'Backtest: refitted on ':'Frozen '+fdate(m.logged_at.slice(0,10))+', using ')+m.n_train.toLocaleString("en-GB")+' matches up to '+fdate(m.last_train_date)+'.'+(MODE==="bt"?' It was made after this match was played, so it tests the method rather than being a locked forecast.':'')+'</p></div>';
   box.innerHTML=html;
   var svg=box.querySelector("[data-steps]");if(svg)stepsChart(svg,m);
 }
 
+/* ---------- live / backtest switch, banner, round comparison ---------- */
+function modes(){var n=$("modes");if(!D.backtest){n.hidden=true;return;}n.hidden=false;n.innerHTML="";
+  var r=D.backtest.rounds||[],rng=r.length?r[0]+"–"+r[r.length-1]:"";
+  [["live","Live predictions","locked before kickoff"],["bt","Backtest","rounds "+rng+" · replayed"]].forEach(function(o){
+    var b=document.createElement("button");b.type="button";b.className="tab";b.setAttribute("aria-pressed",MODE===o[0]);
+    b.innerHTML='<span class="a">'+o[1]+'</span><span class="b">'+o[2]+'</span>';
+    b.addEventListener("click",function(){MODE=o[0];pick();try{history.replaceState(null,"","#"+(MODE==="bt"?"bt":"mw")+SRC().weeks[cur].matchweek);}catch(e){}render();});n.appendChild(b);});}
+function banner(){var b=$("btbanner");if(MODE!=="bt"||!D.backtest){b.hidden=true;return;}b.hidden=false;
+  var sk=D.backtest.skipped||[],s="";
+  if(sk.length)s=" Round"+(sk.length>1?"s ":" ")+sk.map(function(x){return x.round;}).join(", ")+" "+(sk.length>1?"are":"is")+" left out because the data has no earlier match for "+sk.reduce(function(a,x){return a.concat(x.teams);},[]).join(", ")+", so the model cannot rate them yet.";
+  b.innerHTML='<b>This is a backtest, not a locked forecast.</b> For each round, all three models were refitted using only matches played before that round’s first kickoff, then asked to predict the round, and the predictions were compared with what happened. The code and settings were fixed before these rounds were examined, but the matches had already been played when the test was run, so it carries less weight than the live predictions.'+s+' Bookmaker odds come from the match table (average odds, margin removed).';}
+function topTerm(m){var ex=m.explanation;if(!ex)return"";
+  var c=[["shots","home"],["shots","away"],["promoted","home"],["promoted","away"],["adj","home"],["adj","away"]].map(function(c){var t=c[1]==="home"?ex.terms_lam:ex.terms_mu;return {k:c[0],s:c[1],v:t[c[0]]};}).sort(function(a,b){return Math.abs(b.v)-Math.abs(a.v)})[0];
+  var tm=c.s==="home"?m.home:m.away,kind=c.k==="shots"?"the shots-on-target signal":c.k==="promoted"?"the record of newly promoted sides":"the goals-versus-chances correction";
+  return "Our largest adjustment was "+kind+", "+(c.v>=0?"raising":"lowering")+" "+esc(tm)+"’s expected goals (×"+Math.exp(c.v).toFixed(2)+").";}
+function cmp(w){var box=$("cmp"),done=w.matches.filter(function(m){return m.result;});
+  if(!done.length){box.hidden=true;return;}box.hidden=false;
+  var K=D.versions,bk=done.filter(function(m){return m.book&&m.book.loss!=null&&K.every(function(k){return m.versions[k];});});
+  function cellf(arr,hi){var mx=hi?Math.max.apply(null,arr.filter(function(x){return x!=null;})):Math.min.apply(null,arr.filter(function(x){return x!=null;}));
+    return function(x,fmt){return x==null?'<td>–</td>':'<td'+(Math.abs(x-mx)<1e-12?' class="best"':'')+'>'+fmt(x)+'</td>';};}
+  var rows="";
+  done.forEach(function(m){var y=m.result.y,ps=K.map(function(k){return m.versions[k]?m.versions[k].p[y]:null;}),b=m.book?m.book.p[y]:null,cell=cellf(ps.concat([b]),true);
+    rows+='<tr><td>'+esc(m.home)+' '+m.result.hg+'–'+m.result.ag+' '+esc(m.away)+'</td>'+ps.map(function(x){return cell(x,pc);}).join("")+cell(b,pc)+'</tr>';});
+  function avg(f){return bk.reduce(function(a,m){return a+f(m);},0)/bk.length;}
+  var foot="";
+  if(bk.length){
+    var ll=K.map(function(k){return avg(function(m){return m.versions[k].loss;});}),bl=avg(function(m){return m.book.loss;}),cl=cellf(ll.concat([bl]),false),f2=function(x){return x.toFixed(2);};
+    foot+='<tr class="sum"><td>Log loss, lower is better</td>'+ll.map(function(x){return cl(x,f2);}).join("")+cl(bl,f2)+'</tr>';
+    var hits=K.map(function(k){return bk.filter(function(m){return m.versions[k].hit;}).length;}),bh=bk.filter(function(m){return m.book.hit;}).length;
+    foot+='<tr class="sum"><td>Right outcome</td>'+hits.map(function(x){return '<td>'+x+'/'+bk.length+'</td>';}).join("")+'<td>'+bh+'/'+bk.length+'</td></tr>';
+    if(bk.length>1){foot+='<tr class="sum"><td>Gap to bookmakers (± SE)</td>'+K.map(function(k){var d=bk.map(function(m){return m.versions[k].loss-m.book.loss;}),mu=d.reduce(function(a,b){return a+b;},0)/d.length,sd=Math.sqrt(d.reduce(function(a,b){return a+(b-mu)*(b-mu);},0)/(d.length-1));return '<td>'+sgn(mu,2)+'<span class="se">± '+(sd/Math.sqrt(d.length)).toFixed(2)+'</span></td>';}).join("")+'<td>–</td></tr>';}
+  }
+  var story="";
+  if(bk.length>2){
+    var wd=bk.map(function(m){return {m:m,d:m.versions[H].loss-m.book.loss};}).sort(function(a,b){return b.d-a.d;});
+    function line(x,head){var m=x.m,y=m.result.y;return '<p class="note"><b>'+head+':</b> '+esc(m.home)+' '+m.result.hg+'–'+m.result.ag+' '+esc(m.away)+' ('+(y===1?'a draw':esc(winner(m))+' won')+'). The bookmakers gave that outcome '+pc(m.book.p[y])+' and we gave '+pc(m.versions[H].p[y])+'. '+topTerm(m)+'</p>';}
+    if(wd[0].d>0.05)story+=line(wd[0],"Where we trailed the bookmakers most");
+    if(wd[wd.length-1].d<-0.05)story+=line(wd[wd.length-1],"Where we beat them most");
+  }
+  box.innerHTML='<div><h2>How the models and the bookmakers did</h2><p class="note" style="margin-top:6px">Each cell is the probability given to what actually happened, so higher is better, and the best in each row is bold. “v0”, “v1” and “v2” are the three model versions; the headline is '+esc(D.labels[H])+'. The ± is a standard error that treats the matches as independent, so with this few matches treat small gaps as noise.</p></div>'+
+   '<div class="tablewrap"><table><thead><tr><th>Match</th>'+K.map(function(k){return '<th title="'+esc(D.labels[k])+'">'+esc(k.split("-")[0])+'</th>';}).join("")+'<th><span class="hdl">Bookmakers</span><span class="hds">Odds</span></th></tr></thead><tbody>'+rows+foot+'</tbody></table></div>'+story;}
+
 /* ---------- render ---------- */
 function render(){
-  tabs();var w=D.weeks[cur];
-  $("wkTitle").textContent="Matchweek "+w.matchweek;$("wkSum").textContent=weekSummary(w);
+  modes();banner();board();tabs();var w=SRC().weeks[cur];
+  $("wkTitle").textContent="Matchweek "+w.matchweek+(MODE==="bt"?" · backtest":"");$("wkSum").textContent=weekSummary(w);cmp(w);
   var box=$("matches");box.innerHTML="";
   w.matches.forEach(function(m,i){box.appendChild(card(m,w.matchweek+"-"+i));});
 }

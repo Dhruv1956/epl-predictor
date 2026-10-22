@@ -82,3 +82,16 @@ python -m src.site                                         # regenerate docs/ind
 
 `python -m src.site` also writes `docs/artifact.html`, a fragment for another tool; it is
 git-ignored.
+
+## Backtest (rounds already played)
+
+`python -m src.backtest_weeks` replays every round of the current season: for round *k* each model is refitted
+using only matches played before that round's first kickoff, predicts the round, and is scored against the real
+results and the bookmakers (margin removed, average odds). It writes `backtest/` (a log in the same format as
+`live/predictions_log.csv`, per-match explanations, and a note on skipped rounds) and `reports/backtest_season.csv`.
+`python -m src.site` then adds a **Backtest** tab next to the live predictions.
+
+This is not a substitute for the live log: the code and settings were fixed before these rounds were examined,
+but the matches had already been played when the test was run. Rounds with a team that has no earlier match in
+the data (round 1 for a newly promoted side) are skipped. `tests/test_backtest.py` checks that the training set is
+exactly the matches before each round, and that changing the results inside a round cannot change its predictions.
