@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body>
+<title>EPL Match Predictor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one centred column. Masthead, season scoreboard, week tabs, then one card per match with a "why" drawer. */
+:root{
+  --bg:#EEF1F4; --surface:#FCFCFB; --ink:#0F1A26; --muted:#556272; --line:#D3D9E0; --soft:#E5EAEF;
+  --accent:#0F7A53; --accent-ink:#0B5D3F;
+  --oh:#34506B; --od:#8995A3; --oa:#A86A12; --toh:#fff; --tod:#0F1A26; --toa:#fff;
+  --up:#138A5E; --down:#B5476F; --win:#138A5E; --draw:#8995A3; --loss:#B5476F;
+  --f-display:'Bricolage Grotesque','Avenir Next','Segoe UI',system-ui,sans-serif;
+  --f-body:'IBM Plex Sans','Segoe UI',system-ui,sans-serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F151C; --surface:#171E27; --ink:#E8EDF2; --muted:#9AA7B6; --line:#2A3441; --soft:#1F2833;
+  --accent:#3FBF8E; --accent-ink:#6FD6AC;
+  --oh:#9DB1C8; --od:#566273; --oa:#E0A850; --toh:#0F151C; --tod:#fff; --toa:#0F151C;
+  --up:#2CA477; --down:#D45F8C; --win:#2CA477; --draw:#7B8794; --loss:#D45F8C; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F151C; --surface:#171E27; --ink:#E8EDF2; --muted:#9AA7B6; --line:#2A3441; --soft:#1F2833;
+  --accent:#3FBF8E; --accent-ink:#6FD6AC;
+  --oh:#9DB1C8; --od:#566273; --oa:#E0A850; --toh:#0F151C; --tod:#fff; --toa:#0F151C;
+  --up:#2CA477; --down:#D45F8C; --win:#2CA477; --draw:#7B8794; --loss:#D45F8C; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:400 16px/1.6 var(--f-body);margin:0;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 64px}
+.col{max-width:800px;margin:0 auto;display:grid;gap:18px}
+h1,h2,h3,h4{font-family:var(--f-display);margin:0;letter-spacing:-.02em;line-height:1.1;text-wrap:balance}
+p{margin:0}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.eyebrow{font:500 .72rem/1.3 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* masthead */
+.mast{display:grid;gap:12px;padding:6px 2px 4px}
+.mast h1{font-size:clamp(2rem,6vw,3rem);font-weight:800;letter-spacing:-.035em}
+.mast p{color:var(--muted);max-width:60ch}
+.mast .stamp{font:400 .72rem/1.4 var(--f-mono);color:var(--muted)}
+
+/* scoreboard */
+.board{padding:22px 24px;display:grid;gap:14px}
+.board h2{font-size:1.15rem}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:480px;font-size:.9rem}
+th{font:500 .7rem/1.2 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:right;padding:6px 10px;border-bottom:1px solid var(--line)}
+td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--line);font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:.86rem}
+th:first-child,td:first-child{text-align:left}
+td:first-child{font-family:var(--f-body);font-size:.92rem}
+tr:last-child td{border-bottom:0}
+tr.hl td:first-child{font-weight:600}
+.meter{height:8px;background:var(--soft);border-radius:99px;overflow:hidden}
+.meter b{display:block;height:100%;background:var(--accent);border-radius:99px}
+.note{font-size:.84rem;color:var(--muted);max-width:68ch}
+.note b{color:var(--ink);font-weight:600}
+
+/* week tabs */
+.tabs{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;scrollbar-width:thin}
+.tab{flex:none;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;display:grid;gap:2px}
+.tab .a{font:700 .95rem/1.1 var(--f-display)}
+.tab .b{font:400 .7rem/1.3 var(--f-mono);color:var(--muted)}
+.tab[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 -3px 0 var(--accent)}
+.weekhead{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;padding:4px 2px}
+.weekhead h2{font-size:1.5rem}
+.weekhead .sum{font-size:.88rem;color:var(--muted)}
+
+/* match cards */
+.mcard{padding:22px 24px;display:grid;gap:14px}
+.mtop{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+.chip2{font:500 .7rem/1 var(--f-mono);letter-spacing:.05em;text-transform:uppercase;padding:6px 9px;border-radius:6px;border:1px dashed var(--muted);color:var(--muted)}
+.chip2.ft{border-style:solid;border-color:var(--ink);color:var(--ink)}
+.teams{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:12px;align-items:end}
+.team .nm{font:800 clamp(1.5rem,5vw,2.2rem)/1.05 var(--f-display);letter-spacing:-.03em;overflow-wrap:anywhere}
+.team.away{text-align:right}
+.vs{font:500 .8rem/1 var(--f-mono);color:var(--muted);padding-bottom:6px}
+.formrow{display:flex;gap:3px;margin-top:8px;flex-wrap:wrap}
+.team.away .formrow{justify-content:flex-end}
+.chip{width:20px;height:20px;border-radius:5px;display:grid;place-items:center;font:500 .64rem/1 var(--f-mono);color:#fff}
+.chip.W{background:var(--win)} .chip.D{background:var(--draw);color:var(--tod)} .chip.L{background:var(--loss)}
+.probs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:4px}
+.pr .big{font:800 clamp(1.8rem,7vw,2.8rem)/1 var(--f-display);letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.pr .lab{font-size:.8rem;color:var(--muted);margin-top:4px}
+.pr.d{text-align:center} .pr.a{text-align:right}
+.sw{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px}
+.bar{display:flex;height:14px;gap:3px}
+.bar span{border-radius:4px;min-width:3px}
+.meta{font-size:.88rem;color:var(--muted)}
+.meta b{color:var(--ink);font-weight:600;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.resline{font-size:.92rem;padding:12px 14px;background:var(--soft);border-radius:10px}
+.resline b{font-weight:600}
+.whybtn{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;background:transparent;border:1px solid var(--line);border-radius:10px;padding:11px 14px;cursor:pointer;font-weight:600;font-size:.92rem;text-align:left}
+.whybtn:hover{border-color:var(--muted)}
+.whybtn svg{width:14px;height:14px;transition:transform .2s;flex:none}
+.whybtn[aria-expanded="true"] svg{transform:rotate(180deg)}
+
+/* drawer */
+.drawer{display:grid;gap:30px;padding-top:6px}
+.reason{display:grid;gap:12px;padding-top:22px;border-top:1px solid var(--line)}
+.reason:first-child{border-top:0;padding-top:4px}
+.reason h4{font-size:1.08rem}
+.reason p{color:var(--muted);max-width:64ch;font-size:.95rem}
+.reason p b{color:var(--ink);font-weight:600}
+.num{font:500 .7rem/1 var(--f-mono);color:var(--accent-ink);letter-spacing:.1em}
+.short{background:var(--soft);border-radius:10px;padding:16px 18px;display:grid;gap:8px}
+.short ul{margin:0;padding-left:20px;display:grid;gap:8px;max-width:64ch}
+.short li{font-size:.96rem}
+svg.fig{display:block;width:100%;height:auto;overflow:visible}
+.axis{fill:var(--muted);font:400 11px var(--f-mono)}
+.lab{fill:var(--ink);font:500 12px var(--f-body)}
+.labm{fill:var(--muted);font:400 12px var(--f-body)}
+.val{fill:var(--ink);font:500 12px var(--f-mono)}
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 18px}
+.fact .v{font:700 1.3rem/1.1 var(--f-display);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.fact .k{font-size:.78rem;color:var(--muted);line-height:1.35;margin-top:3px}
+.sl{display:grid;grid-template-columns:110px minmax(0,1fr) 44px;gap:12px;align-items:center;margin-top:7px;font:400 .8rem/1 var(--f-mono)}
+.sl .tr{height:11px;background:var(--soft);border-radius:4px;overflow:hidden}
+.sl .tr b{display:block;height:100%;border-radius:4px}
+.sl .p{text-align:right;color:var(--muted)}
+.ranks{display:grid;gap:14px}
+.rank{display:grid;gap:7px}
+.rank .rt{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:.86rem}
+.rank .rt span:last-child{font-family:var(--f-mono);color:var(--muted);font-size:.78rem}
+.cells{display:flex;gap:3px}
+.cells i{flex:1;height:9px;border-radius:3px;background:var(--soft)}
+.stack{display:flex;height:24px;border-radius:5px;overflow:hidden;gap:2px}
+.stack span{display:flex;align-items:center;justify-content:center;font:500 .7rem/1 var(--f-mono);min-width:0;overflow:hidden}
+.cmp3{display:grid;gap:9px}
+.cmp3 .barrow{display:grid;grid-template-columns:132px minmax(0,1fr);gap:12px;align-items:center;font:400 .76rem/1.2 var(--f-mono)}
+.formtable{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 22px}
+.fm{display:grid;gap:6px;min-width:0}
+.fm h5{margin:0;font:600 .9rem/1.2 var(--f-body)}
+.fm .g{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:8px;align-items:center;font-size:.78rem}
+.fm .g .o{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.fm .g .sc{font-family:var(--f-mono)}
+.fine{font-size:.8rem;color:var(--muted);max-width:66ch}
+.out{display:grid;gap:6px}
+footer{font-size:.8rem;color:var(--muted);padding:4px 4px 0;display:grid;gap:6px}
+@media (max-width:620px){
+  .mcard,.board{padding-left:16px;padding-right:16px}
+  .formtable{grid-template-columns:minmax(0,1fr)}
+  .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cmp3 .barrow{grid-template-columns:104px minmax(0,1fr)}
+  .sl{grid-template-columns:96px minmax(0,1fr) 40px}
+}
+@media (prefers-reduced-motion:reduce){.whybtn svg{transition:none}}
+</style>
+
+<div class="col">
+  <header class="mast">
+    <span class="eyebrow">Premier League &middot; <span id="season"></span></span>
+    <h1>EPL Match Predictor</h1>
+    <p>Win, draw and loss probabilities for every Premier League match, from a Poisson goals model written from scratch. Each forecast is locked before kickoff, and after the final whistle it is scored against the result and the bookmakers.</p>
+    <span class="stamp" id="stamp"></span>
+  </header>
+
+  <section class="card board" id="board" aria-label="Season scoreboard"></section>
+
+  <nav class="tabs" id="tabs" aria-label="Matchweeks"></nav>
+  <div class="weekhead"><h2 id="wkTitle"></h2><span class="sum" id="wkSum"></span></div>
+  <div id="matches" style="display:grid;gap:16px"></div>
+
+  <footer>
+    <span>Models fitted on Premier League results and shots on target since 2015/16. Match data and odds from football-data.co.uk.</span>
+    <span>A study project by Dhruv Upadhyaya, MIT Manipal. Probabilities are estimates, not certainties, and this is not betting advice.</span>
+  </footer>
+</div>
+
+<script type="application/json" id="data">{"decay":{"goals_months":5.545177444479562,"shots_months":8.317766166719343},"generated_at":"2026-10-20T14:04+00:00","season":"2026/27","data_through":"2026-10-19","n_train_latest":4250,"headline":"v2-shots","labels":{"v0-poisson":"v0 Goals only","v1-working":"v1 Goals + context","v2-shots":"v2 Goals + shots"},"versions":["v0-poisson","v1-working","v2-shots"],"weeks":[{"matchweek":8,"first":"2026-10-23","last":"2026-10-25","n":10,"n_played":0,"matches":[{"date":"2026-10-23","home":"Ipswich","away":"Nott'm Forest","kickoff":"2026-10-23T20:00","logged_at":"2026-10-20T11:20:17+01:00","n_train":4250,"last_train_date":"2026-10-19","versions":{"v0-poisson":{"p":[0.3333232811418348,0.2451688808354824,0.4215078380226827],"lam":1.3636058616533755,"mu":1.562184483388389},"v1-working":{"p":[0.307984517542246,0.2445269190233907,0.4474885634343633],"lam":1.2919394159503113,"mu":1.6054571027508366},"v2-shots":{"p":[0.359197319318278,0.2448069306234016,0.3959957500583203],"lam":1.4366448707034458,"mu":1.5197883498138662}},"explanation":{"match_date":"2026-10-23","home":"Ipswich","away":"Nott'm Forest","kickoff":"2026-10-23T20:00","model":"v2-shots","ref":"2026-10-23","n_train":4250,"lam":1.4366444078692033,"mu":1.51978850786004,"terms_lam":{"shots":0.11075531016626627,"promoted":-0.16944114787525122,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.1984487844662213,"adj":-0.0042446345274216105},"terms_mu":{"shots":-0.039322728541726366,"promoted":0.10709180780033412,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.0,"adj":0.12401029661780147},"c":1.6089331354821652,"n_clubs":20,"season":"2026/27","ranks":{"home":{"att":7,"def":20,"shot_att":7,"shot_def":16},"away":{"att":16,"def":8,"shot_att":17,"shot_def":11}},"form":{"home":[{"date":"2026-08-30","opp":"Man United","home":false,"gf":2,"ga":5,"res":"L","sot_for":5,"sot_against":11},{"date":"2026-09-04","opp":"Liverpool","home":true,"gf":0,"ga":2,"res":"L","sot_for":5,"sot_against":7},{"date":"2026-09-12","opp":"Crystal Palace","home":false,"gf":3,"ga":2,"res":"W","sot_for":6,"sot_against":4},{"date":"2026-09-19","opp":"Everton","home":false,"gf":0,"ga":1,"res":"L","sot_for":4,"sot_against":2},{"date":"2026-10-10","opp":"Fulham","home":true,"gf":2,"ga":1,"res":"W","sot_for":5,"sot_against":5},{"date":"2026-10-17","opp":"Man City","home":false,"gf":2,"ga":3,"res":"L","sot_for":3,"sot_against":6}],"away":[{"date":"2026-08-29","opp":"Liverpool","home":false,"gf":2,"ga":2,"res":"D","sot_for":3,"sot_against":4},{"date":"2026-09-05","opp":"Tottenham","home":true,"gf":0,"ga":0,"res":"D","sot_for":2,"sot_against":0},{"date":"2026-09-12","opp":"Aston Villa","home":false,"gf":2,"ga":1,"res":"W","sot_for":7,"sot_against":5},{"date":"2026-09-19","opp":"Coventry","home":true,"gf":0,"ga":1,"res":"L","sot_for":3,"sot_against":3},{"date":"2026-10-11","opp":"Crystal Palace","home":false,"gf":1,"ga":3,"res":"L","sot_for":6,"sot_against":7},{"date":"2026-10-18","opp":"Arsenal","home":true,"gf":0,"ga":1,"res":"L","sot_for":2,"sot_against":1}]},"h2h":[{"date":"2024-11-30","home":"Nott'm Forest","away":"Ipswich","hg":1,"ag":0},{"date":"2025-03-15","home":"Ipswich","away":"Nott'm Forest","hg":2,"ag":4}],"newcomer":{"home":true,"away":false},"goals_per_match":2.9},"result":null,"book":null,"matchweek":8},{"date":"2026-10-24","home":"Arsenal","away":"Everton","kickoff":"2026-10-24T12:30","logged_at":"2026-10-20T11:20:17+01:00","n_train":4250,"last_train_date":"2026-10-19","versions":{"v0-poisson":{"p":[0.6172952061993249,0.2329997734720318,0.1497050203286433],"lam":1.7207593742058047,"mu":0.7072349357836722},"v1-working":{"p":[0.6197382224040453,0.2319177380739602,0.1483440395219944],"lam":1.728953601893289,"mu":0.7052027726450159},"v2-shots":{"p":[0.6647307948748362,0.2218067910582317,0.1134624140669319],"lam":1.7620423742806786,"mu":0.5658749788007957}},"explanation":{"match_date":"2026-10-24","home":"Arsenal","away":"Everton","kickoff":"2026-10-24T12:30","model":"v2-shots","ref":"2026-10-23","n_train":4250,"lam":1.7620424464811555,"mu":0.5658749718304368,"terms_lam":{"shots":0.1991312106626572,"promoted":0.0,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.1984487844662213,"adj":-0.057898187696351855},"terms_mu":{"shots":-0.7730454646432293,"promoted":0.0,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.0,"adj":-0.023128468098531745},"c":1.6089331354821652,"n_clubs":20,"season":"2026/27","ranks":{"home":{"att":4,"def":1,"shot_att":8,"shot_def":1},"away":{"att":19,"def":9,"shot_att":18,"shot_def":14}},"form":{"home":[{"date":"2026-08-31","opp":"Aston Villa","home":false,"gf":1,"ga":0,"res":"W","sot_for":2,"sot_against":0},{"date":"2026-09-06","opp":"Chelsea","home":true,"gf":2,"ga":1,"res":"W","sot_for":9,"sot_against":5},{"date":"2026-09-12","opp":"Sunderland","home":false,"gf":2,"ga":0,"res":"W","sot_for":5,"sot_against":3},{"date":"2026-09-19","opp":"Brighton","home":false,"gf":0,"ga":3,"res":"L","sot_for":2,"sot_against":5},{"date":"2026-10-10","opp":"Leeds","home":true,"gf":2,"ga":1,"res":"W","sot_for":6,"sot_against":5},{"date":"2026-10-18","opp":"Nott'm Forest","home":false,"gf":1,"ga":0,"res":"W","sot_for":1,"sot_against":2}],"away":[{"date":"2026-08-29","opp":"Bournemouth","home":false,"gf":1,"ga":1,"res":"D","sot_for":7,"sot_against":5},{"date":"2026-09-06","opp":"Man United","home":true,"gf":2,"ga":2,"res":"D","sot_for":6,"sot_against":3},{"date":"2026-09-12","opp":"Tottenham","home":false,"gf":0,"ga":0,"res":"D","sot_for":3,"sot_against":2},{"date":"2026-09-19","opp":"Ipswich","home":true,"gf":1,"ga":0,"res":"W","sot_for":2,"sot_against":4},{"date":"2026-10-11","opp":"Hull","home":false,"gf":2,"ga":2,"res":"D","sot_for":7,"sot_against":5},{"date":"2026-10-17","opp":"Chelsea","home":true,"gf":0,"ga":2,"res":"L","sot_for":5,"sot_against":7}]},"h2h":[{"date":"2024-05-19","home":"Arsenal","away":"Everton","hg":2,"ag":1},{"date":"2024-12-14","home":"Arsenal","away":"Everton","hg":0,"ag":0},{"date":"2025-04-05","home":"Everton","away":"Arsenal","hg":1,"ag":1},{"date":"2025-12-20","home":"Everton","away":"Arsenal","hg":0,"ag":1},{"date":"2026-03-14","home":"Arsenal","away":"Everton","hg":2,"ag":0}],"newcomer":{"home":false,"away":false},"goals_per_match":2.9},"result":null,"book":null,"matchweek":8},{"date":"2026-10-24","home":"Aston Villa","away":"Man City","kickoff":"2026-10-24T12:30","logged_at":"2026-10-20T11:20:17+01:00","n_train":4250,"last_train_date":"2026-10-19","versions":{"v0-poisson":{"p":[0.260006100456199,0.2335160460558086,0.5064778534879925],"lam":1.2069516670875349,"mu":1.7726625547643884},"v1-working":{"p":[0.2597753087576319,0.2332886575845314,0.5069360336578367],"lam":1.2078414542066205,"mu":1.775493342702125},"v2-shots":{"p":[0.2206958820455268,0.2224446461076243,0.5568594718468487],"lam":1.1191814419638233,"mu":1.9047227461508889}},"explanation":{"match_date":"2026-10-24","home":"Aston Villa","away":"Man City","kickoff":"2026-10-24T12:30","model":"v2-shots","ref":"2026-10-23","n_train":4250,"lam":1.119181551060365,"mu":1.9047226000227646,"terms_lam":{"shots":-0.31924924108973957,"promoted":0.0,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.1984487844662213,"adj":0.006606307079737472},"terms_mu":{"shots":0.4142788310593518,"promoted":0.0,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.0,"adj":0.0032657403950033526},"c":1.6089331354821652,"n_clubs":20,"season":"2026/27","ranks":{"home":{"att":12,"def":15,"shot_att":12,"shot_def":15},"away":{"att":1,"def":2,"shot_att":1,"shot_def":2}},"form":{"home":[{"date":"2026-08-31","opp":"Arsenal","home":true,"gf":0,"ga":1,"res":"L","sot_for":0,"sot_against":2},{"date":"2026-09-05","opp":"Hull","home":false,"gf":0,"ga":0,"res":"D","sot_for":1,"sot_against":4},{"date":"2026-09-12","opp":"Nott'm Forest","home":true,"gf":1,"ga":2,"res":"L","sot_for":5,"sot_against":7},{"date":"2026-09-19","opp":"Tottenham","home":false,"gf":3,"ga":2,"res":"W","sot_for":6,"sot_against":7},{"date":"2026-10-10","opp":"Brentford","home":true,"gf":2,"ga":2,"res":"D","sot_for":7,"sot_against":4},{"date":"2026-10-17","opp":"Newcastle","home":false,"gf":1,"ga":0,"res":"W","sot_for":3,"sot_against":1}],"away":[{"date":"2026-08-28","opp":"Crystal Palace","home":false,"gf":4,"ga":1,"res":"W","sot_for":9,"sot_against":1},{"date":"2026-09-05","opp":"Coventry","home":true,"gf":1,"ga":0,"res":"W","sot_for":4,"sot_against":3},{"date":"2026-09-13","opp":"Man United","home":false,"gf":1,"ga":0,"res":"W","sot_for":2,"sot_against":3},{"date":"2026-09-20","opp":"Sunderland","home":true,"gf":5,"ga":3,"res":"W","sot_for":6,"sot_against":9},{"date":"2026-10-11","opp":"Liverpool","home":false,"gf":3,"ga":0,"res":"W","sot_for":4,"sot_against":6},{"date":"2026-10-17","opp":"Ipswich","home":true,"gf":3,"ga":2,"res":"W","sot_for":6,"sot_against":3}]},"h2h":[{"date":"2024-04-03","home":"Man City","away":"Aston Villa","hg":4,"ag":1},{"date":"2024-12-21","home":"Aston Villa","away":"Man City","hg":2,"ag":1},{"date":"2025-04-22","home":"Man City","away":"Aston Villa","hg":2,"ag":1},{"date":"2025-10-26","home":"Aston Villa","away":"Man City","hg":1,"ag":0},{"date":"2026-05-24","home":"Man City","away":"Aston Villa","hg":1,"ag":2}],"newcomer":{"home":false,"away":false},"goals_per_match":2.9},"result":null,"book":null,"matchweek":8},{"date":"2026-10-24","home":"Coventry","away":"Fulham","kickoff":"2026-10-24T12:30","logged_at":"2026-10-20T11:20:17+01:00","n_train":4250,"last_train_date":"2026-10-19","versions":{"v0-poisson":{"p":[0.3644260783628215,0.2643240612307802,0.3712498604063983],"lam":1.2892056540108787,"mu":1.303751685286563},"v1-working":{"p":[0.3237108654833329,0.2654675062880263,0.4108216282286407],"lam":1.1833955006134684,"mu":1.368054186468083},"v2-shots":{"p":[0.3584030091870089,0.2803260885855967,0.3612709022273943],"lam":1.1704101020770672,"mu":1.1762653604388815}},"explanation":{"match_date":"2026-10-24","home":"Coventry","away":"Fulham","kickoff":"2026-10-24T12:30","model":"v2-shots","ref":"2026-10-23","n_train":4250,"lam":1.1704101539761904,"mu":1.176265072974621,"terms_lam":{"shots":-0.062661155640672,"promoted":-0.16944114787525122,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.1984487844662213,"adj":-0.03578404435326327},"terms_mu":{"shots":-0.2765832415780616,"promoted":0.10709180780033412,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.0,"adj":0.10504385030900408},"c":1.6089331354821652,"n_clubs":20,"season":"2026/27","ranks":{"home":{"att":13,"def":14,"shot_att":11,"shot_def":5},"away":{"att":20,"def":11,"shot_att":19,"shot_def":10}},"form":{"home":[{"date":"2026-08-29","opp":"Hull","home":true,"gf":0,"ga":1,"res":"L","sot_for":3,"sot_against":2},{"date":"2026-09-05","opp":"Man City","home":false,"gf":0,"ga":1,"res":"L","sot_for":3,"sot_against":4},{"date":"2026-09-13","opp":"Brighton","home":true,"gf":0,"ga":5,"res":"L","sot_for":6,"sot_against":7},{"date":"2026-09-19","opp":"Nott'm Forest","home":false,"gf":1,"ga":0,"res":"W","sot_for":3,"sot_against":3},{"date":"2026-10-12","opp":"Newcastle","home":true,"gf":4,"ga":1,"res":"W","sot_for":6,"sot_against":6},{"date":"2026-10-19","opp":"Tottenham","home":false,"gf":1,"ga":3,"res":"L","sot_for":1,"sot_against":5}],"away":[{"date":"2026-08-30","opp":"Sunderland","home":false,"gf":0,"ga":1,"res":"L","sot_for":0,"sot_against":4},{"date":"2026-09-05","opp":"Crystal Palace","home":true,"gf":2,"ga":3,"res":"L","sot_for":6,"sot_against":5},{"date":"2026-09-12","opp":"Liverpool","home":false,"gf":0,"ga":0,"res":"D","sot_for":4,"sot_against":3},{"date":"2026-09-20","opp":"Man United","home":true,"gf":1,"ga":1,"res":"D","sot_for":6,"sot_against":6},{"date":"2026-10-10","opp":"Ipswich","home":false,"gf":1,"ga":2,"res":"L","sot_for":5,"sot_against":5},{"date":"2026-10-17","opp":"Hull","home":true,"gf":1,"ga":0,"res":"W","sot_for":6,"sot_against":0}]},"h2h":[],"newcomer":{"home":true,"away":false},"goals_per_match":2.9},"result":null,"book":null,"matchweek":8},{"date":"2026-10-24","home":"Liverpool","away":"Brighton","kickoff":"2026-10-24T12:30","logged_at":"2026-10-20T11:20:17+01:00","n_train":4250,"last_train_date":"2026-10-19","versions":{"v0-poisson":{"p":[0.4269047774652186,0.2375327323588536,0.3355624901759277],"lam":1.6506143683275003,"mu":1.439792774880536},"v1-working":{"p":[0.4254623474519785,0.237524024927878,0.3370136276201434],"lam":1.6483976570003165,"mu":1.444210812738968},"v2-shots":{"p":[0.366942464958342,0.2397960203036284,0.3932615147380295],"lam":1.5038736932128185,"mu":1.564328268057391}},"explanation":{"match_date":"2026-10-24","home":"Liverpool","away":"Brighton","kickoff":"2026-10-24T12:30","model":"v2-shots","ref":"2026-10-23","n_train":4250,"lam":1.5038733605730252,"mu":1.5643288523552719,"terms_lam":{"shots":0.10240957417483727,"promoted":0.0,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.1984487844662213,"adj":-0.11960614814044043},"terms_mu":{"shots":0.10921242162305245,"promoted":0.0,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.0,"adj":0.11145265231682354},"c":1.6089331354821652,"n_clubs":20,"season":"2026/27","ranks":{"home":{"att":6,"def":6,"shot_att":3,"shot_def":7},"away":{"att":2,"def":5,"shot_att":4,"shot_def":6}},"form":{"home":[{"date":"2026-08-29","opp":"Nott'm Forest","home":true,"gf":2,"ga":2,"res":"D","sot_for":4,"sot_against":3},{"date":"2026-09-04","opp":"Ipswich","home":false,"gf":2,"ga":0,"res":"W","sot_for":7,"sot_against":5},{"date":"2026-09-12","opp":"Fulham","home":true,"gf":0,"ga":0,"res":"D","sot_for":3,"sot_against":4},{"date":"2026-09-20","opp":"Bournemouth","home":false,"gf":1,"ga":0,"res":"W","sot_for":3,"sot_against":2},{"date":"2026-10-11","opp":"Man City","home":true,"gf":0,"ga":3,"res":"L","sot_for":6,"sot_against":4},{"date":"2026-10-17","opp":"Brentford","home":false,"gf":2,"ga":1,"res":"W","sot_for":5,"sot_against":2}],"away":[{"date":"2026-08-30","opp":"Chelsea","home":false,"gf":3,"ga":4,"res":"L","sot_for":6,"sot_against":6},{"date":"2026-09-05","opp":"Leeds","home":true,"gf":1,"ga":1,"res":"D","sot_for":5,"sot_against":5},{"date":"2026-09-13","opp":"Coventry","home":false,"gf":5,"ga":0,"res":"W","sot_for":7,"sot_against":6},{"date":"2026-09-19","opp":"Arsenal","home":true,"gf":3,"ga":0,"res":"W","sot_for":5,"sot_against":2},{"date":"2026-10-10","opp":"Sunderland","home":false,"gf":2,"ga":0,"res":"W","sot_for":4,"sot_against":3},{"date":"2026-10-18","opp":"Crystal Palace","home":true,"gf":5,"ga":0,"res":"W","sot_for":9,"sot_against":1}]},"h2h":[{"date":"2024-03-31","home":"Liverpool","away":"Brighton","hg":2,"ag":1},{"date":"2024-11-02","home":"Liverpool","away":"Brighton","hg":2,"ag":1},{"date":"2025-05-19","home":"Brighton","away":"Liverpool","hg":3,"ag":2},{"date":"2025-12-13","home":"Liverpool","away":"Brighton","hg":2,"ag":0},{"date":"2026-03-21","home":"Brighton","away":"Liverpool","hg":2,"ag":1}],"newcomer":{"home":false,"away":false},"goals_per_match":2.9},"result":null,"book":null,"matchweek":8},{"date":"2026-10-24","home":"Chelsea","away":"Tottenham","kickoff":"2026-10-24T17:30","logged_at":"2026-10-20T11:20:17+01:00","n_train":4250,"last_train_date":"2026-10-19","versions":{"v0-poisson":{"p":[0.5581894132086639,0.2150874374826885,0.2267231493086476],"lam":2.007274897313168,"mu":1.2109414727753898},"v1-working":{"p":[0.5582090006934022,0.2148189882521246,0.2269720110544732],"lam":2.0112497767332016,"mu":1.2146270728286397},"v2-shots":{"p":[0.5848315377310592,0.2075171978055747,0.207651264463366],"lam":2.0959098521699318,"mu":1.1760788155447468}},"explanation":{"match_date":"2026-10-24","home":"Chelsea","away":"Tottenham","kickoff":"2026-10-24T17:30","model":"v2-shots","ref":"2026-10-23","n_train":4250,"lam":2.0959100543473514,"mu":1.1760786692233522,"terms_lam":{"shots":0.1469201034643253,"promoted":0.0,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.1984487844662213,"adj":0.1678271548700369},"terms_mu":{"shots":0.02347420150682357,"promoted":0.0,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.0,"adj":-0.08808026840491576},"c":1.6089331354821652,"n_clubs":20,"season":"2026/27","ranks":{"home":{"att":3,"def":17,"shot_att":5,"shot_def":17},"away":{"att":18,"def":16,"shot_att":14,"shot_def":13}},"form":{"home":[{"date":"2026-08-30","opp":"Brighton","home":true,"gf":4,"ga":3,"res":"W","sot_for":6,"sot_against":6},{"date":"2026-09-06","opp":"Arsenal","home":false,"gf":1,"ga":2,"res":"L","sot_for":5,"sot_against":9},{"date":"2026-09-12","opp":"Hull","home":true,"gf":2,"ga":2,"res":"D","sot_for":7,"sot_against":5},{"date":"2026-09-18","opp":"Brentford","home":false,"gf":0,"ga":3,"res":"L","sot_for":2,"sot_against":6},{"date":"2026-10-10","opp":"Bournemouth","home":true,"gf":5,"ga":1,"res":"W","sot_for":6,"sot_against":4},{"date":"2026-10-17","opp":"Everton","home":false,"gf":2,"ga":0,"res":"W","sot_for":7,"sot_against":5}],"away":[{"date":"2026-08-29","opp":"Newcastle","home":true,"gf":0,"ga":2,"res":"L","sot_for":6,"sot_against":2},{"date":"2026-09-05","opp":"Nott'm Forest","home":false,"gf":0,"ga":0,"res":"D","sot_for":0,"sot_against":2},{"date":"2026-09-12","opp":"Everton","home":true,"gf":0,"ga":0,"res":"D","sot_for":2,"sot_against":3},{"date":"2026-09-19","opp":"Aston Villa","home":true,"gf":2,"ga":3,"res":"L","sot_for":7,"sot_against":6},{"date":"2026-10-10","opp":"Man United","home":false,"gf":1,"ga":1,"res":"D","sot_for":3,"sot_against":4},{"date":"2026-10-19","opp":"Coventry","home":true,"gf":3,"ga":1,"res":"W","sot_for":5,"sot_against":1}]},"h2h":[{"date":"2024-05-02","home":"Chelsea","away":"Tottenham","hg":2,"ag":0},{"date":"2024-12-08","home":"Tottenham","away":"Chelsea","hg":3,"ag":4},{"date":"2025-04-03","home":"Chelsea","away":"Tottenham","hg":1,"ag":0},{"date":"2025-11-01","home":"Tottenham","away":"Chelsea","hg":0,"ag":1},{"date":"2026-05-19","home":"Chelsea","away":"Tottenham","hg":2,"ag":1}],"newcomer":{"home":false,"away":false},"goals_per_match":2.9},"result":null,"book":null,"matchweek":8},{"date":"2026-10-25","home":"Crystal Palace","away":"Newcastle","kickoff":"2026-10-25T14:00","logged_at":"2026-10-20T11:20:17+01:00","n_train":4250,"last_train_date":"2026-10-19","versions":{"v0-poisson":{"p":[0.3699250442320331,0.2433529783959655,0.3867219773720013],"lam":1.476605025260833,"mu":1.5147480208470514},"v1-working":{"p":[0.3714335304537179,0.2430591248185768,0.3855073447277053],"lam":1.4830079818447783,"mu":1.5149984810000463},"v2-shots":{"p":[0.3788256221401277,0.237619771266214,0.3835546065936581],"lam":1.5547823532892135,"mu":1.5657261699717893}},"explanation":{"match_date":"2026-10-25","home":"Crystal Palace","away":"Newcastle","kickoff":"2026-10-25T14:00","model":"v2-shots","ref":"2026-10-23","n_train":4250,"lam":1.5547818558300972,"mu":1.5657261547076942,"terms_lam":{"shots":0.006288358902047066,"promoted":0.0,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.1984487844662213,"adj":0.009806297046964375},"terms_mu":{"shots":0.15116233409015664,"promoted":0.0,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.0,"adj":0.07039556917194542},"c":1.6089331354821652,"n_clubs":20,"season":"2026/27","ranks":{"home":{"att":17,"def":19,"shot_att":20,"shot_def":18},"away":{"att":10,"def":18,"shot_att":10,"shot_def":19}},"form":{"home":[{"date":"2026-08-28","opp":"Man City","home":true,"gf":1,"ga":4,"res":"L","sot_for":1,"sot_against":9},{"date":"2026-09-05","opp":"Fulham","home":false,"gf":3,"ga":2,"res":"W","sot_for":5,"sot_against":6},{"date":"2026-09-12","opp":"Ipswich","home":true,"gf":2,"ga":3,"res":"L","sot_for":4,"sot_against":6},{"date":"2026-09-20","opp":"Leeds","home":false,"gf":0,"ga":0,"res":"D","sot_for":4,"sot_against":2},{"date":"2026-10-11","opp":"Nott'm Forest","home":true,"gf":3,"ga":1,"res":"W","sot_for":7,"sot_against":6},{"date":"2026-10-18","opp":"Brighton","home":false,"gf":0,"ga":5,"res":"L","sot_for":1,"sot_against":9}],"away":[{"date":"2026-08-29","opp":"Tottenham","home":false,"gf":2,"ga":0,"res":"W","sot_for":2,"sot_against":6},{"date":"2026-09-05","opp":"Bournemouth","home":true,"gf":2,"ga":2,"res":"D","sot_for":2,"sot_against":5},{"date":"2026-09-14","opp":"Leeds","home":false,"gf":1,"ga":4,"res":"L","sot_for":5,"sot_against":6},{"date":"2026-09-19","opp":"Hull","home":true,"gf":2,"ga":1,"res":"W","sot_for":5,"sot_against":4},{"date":"2026-10-12","opp":"Coventry","home":false,"gf":1,"ga":4,"res":"L","sot_for":6,"sot_against":6},{"date":"2026-10-17","opp":"Aston Villa","home":true,"gf":0,"ga":1,"res":"L","sot_for":1,"sot_against":3}]},"h2h":[{"date":"2024-04-24","home":"Crystal Palace","away":"Newcastle","hg":2,"ag":0},{"date":"2024-11-30","home":"Crystal Palace","away":"Newcastle","hg":1,"ag":1},{"date":"2025-04-16","home":"Newcastle","away":"Crystal Palace","hg":5,"ag":0},{"date":"2026-01-04","home":"Newcastle","away":"Crystal Palace","hg":2,"ag":0},{"date":"2026-04-12","home":"Crystal Palace","away":"Newcastle","hg":2,"ag":1}],"newcomer":{"home":false,"away":false},"goals_per_match":2.9},"result":null,"book":null,"matchweek":8},{"date":"2026-10-25","home":"Hull","away":"Brentford","kickoff":"2026-10-25T14:00","logged_at":"2026-10-20T11:20:17+01:00","n_train":4250,"last_train_date":"2026-10-19","versions":{"v0-poisson":{"p":[0.3910256243464674,0.2655374520216771,0.3434369236318554],"lam":1.3335688879036778,"mu":1.2325417204070357},"v1-working":{"p":[0.3478557070305236,0.2680015686845046,0.3841427242849716],"lam":1.2261097062147417,"mu":1.3026401812164927},"v2-shots":{"p":[0.3565578288776291,0.2751287828549701,0.3683133882674005],"lam":1.198693756795349,"mu":1.2230216000837242}},"explanation":{"match_date":"2026-10-25","home":"Hull","away":"Brentford","kickoff":"2026-10-25T14:00","model":"v2-shots","ref":"2026-10-23","n_train":4250,"lam":1.1986933266737214,"mu":1.2230220413567174,"terms_lam":{"shots":0.08598220864851004,"promoted":-0.16944114787525122,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.1984487844662213,"adj":-0.16054958589556123},"terms_mu":{"shots":-0.15730434330007448,"promoted":0.10709180780033412,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.0,"adj":0.02474560467570394},"c":1.6089331354821652,"n_clubs":20,"season":"2026/27","ranks":{"home":{"att":14,"def":4,"shot_att":13,"shot_def":8},"away":{"att":8,"def":12,"shot_att":16,"shot_def":20}},"form":{"home":[{"date":"2026-08-29","opp":"Coventry","home":false,"gf":1,"ga":0,"res":"W","sot_for":2,"sot_against":3},{"date":"2026-09-05","opp":"Aston Villa","home":true,"gf":0,"ga":0,"res":"D","sot_for":4,"sot_against":1},{"date":"2026-09-12","opp":"Chelsea","home":false,"gf":2,"ga":2,"res":"D","sot_for":5,"sot_against":7},{"date":"2026-09-19","opp":"Newcastle","home":false,"gf":1,"ga":2,"res":"L","sot_for":4,"sot_against":5},{"date":"2026-10-11","opp":"Everton","home":true,"gf":2,"ga":2,"res":"D","sot_for":5,"sot_against":7},{"date":"2026-10-17","opp":"Fulham","home":false,"gf":0,"ga":1,"res":"L","sot_for":0,"sot_against":6}],"away":[{"date":"2026-08-30","opp":"Leeds","home":false,"gf":1,"ga":1,"res":"D","sot_for":5,"sot_against":2},{"date":"2026-09-05","opp":"Sunderland","home":true,"gf":1,"ga":1,"res":"D","sot_for":2,"sot_against":5},{"date":"2026-09-12","opp":"Bournemouth","home":false,"gf":2,"ga":2,"res":"D","sot_for":2,"sot_against":10},{"date":"2026-09-18","opp":"Chelsea","home":true,"gf":3,"ga":0,"res":"W","sot_for":6,"sot_against":2},{"date":"2026-10-10","opp":"Aston Villa","home":false,"gf":2,"ga":2,"res":"D","sot_for":4,"sot_against":7},{"date":"2026-10-17","opp":"Liverpool","home":true,"gf":1,"ga":2,"res":"L","sot_for":2,"sot_against":5}]},"h2h":[],"newcomer":{"home":true,"away":false},"goals_per_match":2.9},"result":null,"book":null,"matchweek":8},{"date":"2026-10-25","home":"Man United","away":"Bournemouth","kickoff":"2026-10-25T14:00","logged_at":"2026-10-20T11:20:17+01:00","n_train":4250,"last_train_date":"2026-10-19","versions":{"v0-poisson":{"p":[0.483145609843837,0.236409344614037,0.2804450455421259],"lam":1.7274011077880267,"mu":1.263290689344595},"v1-working":{"p":[0.479829056141055,0.2366788052278847,0.2834921386310602],"lam":1.7219599198716566,"mu":1.272408570606144},"v2-shots":{"p":[0.5100701987846424,0.2271522696534365,0.262777531561921],"lam":1.852197417346948,"mu":1.2722456343549735}},"explanation":{"match_date":"2026-10-25","home":"Man United","away":"Bournemouth","kickoff":"2026-10-25T14:00","model":"v2-shots","ref":"2026-10-23","n_train":4250,"lam":1.8521971696036514,"mu":1.2722455141214764,"terms_lam":{"shots":0.24891845680095911,"promoted":0.0,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.1984487844662213,"adj":-0.05778645737626188},"terms_mu":{"shots":0.08524276858257412,"promoted":0.0,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.0,"adj":-0.0712511177782584},"c":1.6089331354821652,"n_clubs":20,"season":"2026/27","ranks":{"home":{"att":5,"def":10,"shot_att":2,"shot_def":9},"away":{"att":9,"def":13,"shot_att":6,"shot_def":12}},"form":{"home":[{"date":"2026-08-30","opp":"Ipswich","home":true,"gf":5,"ga":2,"res":"W","sot_for":11,"sot_against":5},{"date":"2026-09-06","opp":"Everton","home":false,"gf":2,"ga":2,"res":"D","sot_for":3,"sot_against":6},{"date":"2026-09-13","opp":"Man City","home":true,"gf":0,"ga":1,"res":"L","sot_for":3,"sot_against":2},{"date":"2026-09-20","opp":"Fulham","home":false,"gf":1,"ga":1,"res":"D","sot_for":6,"sot_against":6},{"date":"2026-10-10","opp":"Tottenham","home":true,"gf":1,"ga":1,"res":"D","sot_for":4,"sot_against":3},{"date":"2026-10-18","opp":"Leeds","home":false,"gf":1,"ga":1,"res":"D","sot_for":3,"sot_against":5}],"away":[{"date":"2026-08-29","opp":"Everton","home":true,"gf":1,"ga":1,"res":"D","sot_for":5,"sot_against":7},{"date":"2026-09-05","opp":"Newcastle","home":false,"gf":2,"ga":2,"res":"D","sot_for":5,"sot_against":2},{"date":"2026-09-12","opp":"Brentford","home":true,"gf":2,"ga":2,"res":"D","sot_for":10,"sot_against":2},{"date":"2026-09-20","opp":"Liverpool","home":true,"gf":0,"ga":1,"res":"L","sot_for":2,"sot_against":3},{"date":"2026-10-10","opp":"Chelsea","home":false,"gf":1,"ga":5,"res":"L","sot_for":4,"sot_against":6},{"date":"2026-10-18","opp":"Sunderland","home":true,"gf":2,"ga":0,"res":"W","sot_for":6,"sot_against":0}]},"h2h":[{"date":"2024-04-13","home":"Bournemouth","away":"Man United","hg":2,"ag":2},{"date":"2024-12-22","home":"Man United","away":"Bournemouth","hg":0,"ag":3},{"date":"2025-04-27","home":"Bournemouth","away":"Man United","hg":1,"ag":1},{"date":"2025-12-15","home":"Man United","away":"Bournemouth","hg":4,"ag":4},{"date":"2026-03-20","home":"Bournemouth","away":"Man United","hg":2,"ag":2}],"newcomer":{"home":false,"away":false},"goals_per_match":2.9},"result":null,"book":null,"matchweek":8},{"date":"2026-10-25","home":"Sunderland","away":"Leeds","kickoff":"2026-10-25T16:30","logged_at":"2026-10-20T11:20:17+01:00","n_train":4250,"last_train_date":"2026-10-19","versions":{"v0-poisson":{"p":[0.3503018019723468,0.2771465271356337,0.3725516708920194],"lam":1.1725988609688247,"mu":1.2183954157612922},"v1-working":{"p":[0.3536793576598399,0.2717465169289249,0.3745741254112352],"lam":1.214298308886394,"mu":1.2579289410084702},"v2-shots":{"p":[0.3282430336891533,0.2819443334684332,0.3898126328424134],"lam":1.0945984324606848,"mu":1.219646471555986}},"explanation":{"match_date":"2026-10-25","home":"Sunderland","away":"Leeds","kickoff":"2026-10-25T16:30","model":"v2-shots","ref":"2026-10-23","n_train":4250,"lam":1.0945986609469671,"mu":1.2196464807865632,"terms_lam":{"shots":-0.24028982836807095,"promoted":0.0,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.1984487844662213,"adj":-0.09456298943278227},"terms_mu":{"shots":-0.17868429704209332,"promoted":0.0,"closed_doors":-0.0,"base":0.22679180973520519,"home":0.0,"adj":0.1504535342135797},"c":1.6089331354821652,"n_clubs":20,"season":"2026/27","ranks":{"home":{"att":15,"def":7,"shot_att":15,"shot_def":3},"away":{"att":11,"def":3,"shot_att":9,"shot_def":4}},"form":{"home":[{"date":"2026-08-30","opp":"Fulham","home":true,"gf":1,"ga":0,"res":"W","sot_for":4,"sot_against":0},{"date":"2026-09-05","opp":"Brentford","home":false,"gf":1,"ga":1,"res":"D","sot_for":5,"sot_against":2},{"date":"2026-09-12","opp":"Arsenal","home":true,"gf":0,"ga":2,"res":"L","sot_for":3,"sot_against":5},{"date":"2026-09-20","opp":"Man City","home":false,"gf":3,"ga":5,"res":"L","sot_for":9,"sot_against":6},{"date":"2026-10-10","opp":"Brighton","home":true,"gf":0,"ga":2,"res":"L","sot_for":3,"sot_against":4},{"date":"2026-10-18","opp":"Bournemouth","home":false,"gf":0,"ga":2,"res":"L","sot_for":0,"sot_against":6}],"away":[{"date":"2026-08-30","opp":"Brentford","home":true,"gf":1,"ga":1,"res":"D","sot_for":2,"sot_against":5},{"date":"2026-09-05","opp":"Brighton","home":false,"gf":1,"ga":1,"res":"D","sot_for":5,"sot_against":5},{"date":"2026-09-14","opp":"Newcastle","home":true,"gf":4,"ga":1,"res":"W","sot_for":6,"sot_against":5},{"date":"2026-09-20","opp":"Crystal Palace","home":true,"gf":0,"ga":0,"res":"D","sot_for":2,"sot_against":4},{"date":"2026-10-10","opp":"Arsenal","home":false,"gf":1,"ga":2,"res":"L","sot_for":5,"sot_against":6},{"date":"2026-10-18","opp":"Man United","home":true,"gf":1,"ga":1,"res":"D","sot_for":5,"sot_against":3}]},"h2h":[{"date":"2025-12-28","home":"Sunderland","away":"Leeds","hg":1,"ag":1},{"date":"2026-03-03","home":"Leeds","away":"Sunderland","hg":0,"ag":1}],"newcomer":{"home":false,"away":false},"goals_per_match":2.9},"result":null,"book":null,"matchweek":8}]}],"scoreboard":{"n":0,"needed":350,"models":[],"book":null}}</script>
+<script>
+(function(){
+var D=JSON.parse(document.getElementById("data").textContent);
+var NS="http://www.w3.org/2000/svg",H=D.headline;
+var MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],DAY=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+function $(id){return document.getElementById(id);}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+function el(n,a,t){var e=document.createElementNS(NS,n);for(var k in a)e.setAttribute(k,a[k]);if(t!=null)e.textContent=t;return e;}
+function ord(n){var s=["th","st","nd","rd"],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0]);}
+function pc(x){return Math.round(x*100)+"%";}
+function d3(s){var p=s.split("-");return new Date(Date.UTC(+p[0],+p[1]-1,+p[2]));}
+function fdate(s){var d=d3(s);return DAY[d.getUTCDay()]+" "+d.getUTCDate()+" "+MON[d.getUTCMonth()];}
+function ftime(m){return m.kickoff&&m.kickoff.indexOf("T")>0?m.kickoff.split("T")[1].slice(0,5)+" UK":"";}
+function pois(l,k){var r=Math.exp(-l);for(var i=1;i<=k;i++)r*=l/i;return r;}
+function share(ps,total,dec){var f=Math.pow(10,dec),sum=ps.reduce(function(a,b){return a+b}),raw=ps.map(function(p){return p/sum*total*f}),fl=raw.map(Math.floor),
+  need=total*f-fl.reduce(function(a,b){return a+b}),o=raw.map(function(r,i){return [r-fl[i],i]}).sort(function(a,b){return b[0]-a[0]});
+  for(var i=0;i<need;i++)fl[o[i][1]]++;return fl.map(function(x){return x/f});}
+function sgn(x,d){return (x>=0?"+":"−")+Math.abs(x).toFixed(d);}
+function winner(m){var y=m.result.y;return y===0?m.home:y===2?m.away:"Draw";}
+
+/* ---------- masthead + scoreboard ---------- */
+$("season").textContent=D.season+" season";
+$("stamp").textContent="Updated "+D.generated_at.replace("T"," ").slice(0,16)+" UTC · results through "+fdate(D.data_through)+" · models fitted on "+D.n_train_latest.toLocaleString("en-GB")+" matches";
+function board(){
+  var b=D.scoreboard,box=$("board");
+  if(!b.n){box.innerHTML='<h2>Season scoreboard</h2><p class="note">No predictions have been scored yet. The first matches of <b>Matchweek '+D.weeks[0].matchweek+'</b> kick off on '+fdate(D.weeks[0].first)+'. When they finish, each model’s log loss, Brier score and hit rate appear here, next to the bookmakers’.</p>';return;}
+  var rows=b.models.map(function(m){var hl=m.version===H;
+    return '<tr'+(hl?' class="hl"':'')+'><td>'+esc(m.label)+'</td><td>'+pc(m.accuracy)+'</td><td>'+m.log_loss.toFixed(3)+'</td><td>'+m.brier.toFixed(3)+'</td><td>'+(m.gap!=null?sgn(m.gap,3)+' ± '+m.gap_se.toFixed(3):'–')+'</td></tr>';}).join("");
+  if(b.book)rows+='<tr><td>Bookmakers (average odds)</td><td>'+pc(b.book.accuracy)+'</td><td>'+b.book.log_loss.toFixed(3)+'</td><td>'+b.book.brier.toFixed(3)+'</td><td>–</td></tr>';
+  var pct=Math.min(100,b.n/b.needed*100);
+  box.innerHTML='<div><h2>Season scoreboard</h2><p class="note" style="margin-top:6px">'+b.n+' match'+(b.n===1?'':'es')+' scored so far. Lower log loss and Brier are better; the gap compares each model with the bookmakers on the same matches (negative means we did better).</p></div>'+
+   '<div class="tablewrap"><table><thead><tr><th>Model</th><th>Right outcome</th><th>Log loss</th><th>Brier</th><th>Gap to bookmakers</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+   '<div><div class="meter" role="img" aria-label="Matches scored out of '+b.needed+' needed"><b style="width:'+pct.toFixed(1)+'%"></b></div>'+
+   '<p class="note" style="margin-top:8px"><b>'+b.n+' of about '+b.needed+'</b> matches scored. It takes roughly that many to tell a 0.0165 gap to the bookmakers from noise, so early numbers can swing a lot.'+
+   (b.book&&b.book.before_kickoff<b.book.n?' Bookmaker odds for '+(b.book.n-b.book.before_kickoff)+' of these matches were taken from the match table after the fact, a slightly stricter benchmark.':'')+'</p></div>';
+}
+board();
+
+/* ---------- weeks ---------- */
+var cur=0;
+(function pick(){var h=location.hash.replace("#",""),i;
+  for(i=0;i<D.weeks.length;i++){if("mw"+D.weeks[i].matchweek===h){cur=i;return;}}
+  for(i=0;i<D.weeks.length;i++){if(D.weeks[i].n_played<D.weeks[i].n){cur=i;return;}}
+  cur=D.weeks.length-1;})();
+function fr(w){var a=fdate(w.first).split(" "),b=fdate(w.last).split(" ");return w.first===w.last?a[1]+" "+a[2]:a[1]+"–"+b[1]+" "+b[2];}
+function tabs(){var t=$("tabs");t.innerHTML="";
+  D.weeks.forEach(function(w,i){var b=document.createElement("button");b.type="button";b.className="tab";b.setAttribute("aria-pressed",i===cur);
+    var st=w.n_played===0?"to play":w.n_played<w.n?w.n_played+" of "+w.n+" played":"all played";
+    b.innerHTML='<span class="a">Matchweek '+w.matchweek+'</span><span class="b">'+fr(w)+' · '+st+'</span>';
+    b.addEventListener("click",function(){cur=i;try{history.replaceState(null,"","#mw"+w.matchweek);}catch(e){}render();});t.appendChild(b);});}
+
+function weekSummary(w){
+  var done=w.matches.filter(function(m){return m.result;});
+  if(!done.length)return w.n+" matches · predictions locked, none played yet";
+  var hit=done.filter(function(m){return m.versions[H]&&m.versions[H].hit;}).length;
+  var ll=done.reduce(function(a,m){return a+m.versions[H].loss;},0)/done.length;
+  var bk=done.filter(function(m){return m.book&&m.book.loss!=null;});
+  var s=done.length+" of "+w.n+" played · right outcome "+hit+"/"+done.length+" · log loss "+ll.toFixed(2);
+  if(bk.length){var bl=bk.reduce(function(a,m){return a+m.book.loss;},0)/bk.length,ml=bk.reduce(function(a,m){return a+m.versions[H].loss;},0)/bk.length;s+=" (bookmakers "+bl.toFixed(2)+", us "+ml.toFixed(2)+" on the same "+bk.length+")";}
+  return s;
+}
+
+/* ---------- a match card ---------- */
+function chips(rows){return rows.slice(-6).map(function(r){return '<span class="chip '+r.res+'" title="'+esc(r.opp)+' '+(r.home?"(H) ":"(A) ")+r.gf+'-'+r.ga+'">'+r.res+'</span>';}).join("");}
+function card(m,idx){
+  var v=m.versions[H],ex=m.explanation,p=share(v.p,100,0),art=document.createElement("article");art.className="card mcard";art.id="m"+idx;
+  var best=[0,0,0];for(var i=0;i<=8;i++)for(var j=0;j<=8;j++){var q=pois(v.lam,i)*pois(v.mu,j);if(q>best[2])best=[i,j,q];}
+  var status=m.result?'<span class="chip2 ft">Full time '+m.result.hg+'–'+m.result.ag+'</span>':'<span class="chip2">Locked · pending</span>';
+  var h='<div class="mtop"><span class="eyebrow">'+fdate(m.date)+(ftime(m)?' · '+ftime(m):'')+'</span>'+status+'</div>'+
+   '<div class="teams"><div class="team home"><div class="nm">'+esc(m.home)+'</div>'+(ex?'<div class="formrow">'+chips(ex.form.home)+'</div>':'')+'</div><div class="vs">v</div>'+
+   '<div class="team away"><div class="nm">'+esc(m.away)+'</div>'+(ex?'<div class="formrow">'+chips(ex.form.away)+'</div>':'')+'</div></div>'+
+   '<div class="probs"><div class="pr h"><div class="big">'+p[0]+'%</div><div class="lab"><i class="sw" style="background:var(--oh)"></i>'+esc(m.home)+' win</div></div>'+
+   '<div class="pr d"><div class="big">'+p[1]+'%</div><div class="lab"><i class="sw" style="background:var(--od)"></i>Draw</div></div>'+
+   '<div class="pr a"><div class="big">'+p[2]+'%</div><div class="lab"><i class="sw" style="background:var(--oa)"></i>'+esc(m.away)+' win</div></div></div>'+
+   '<div class="bar"><span style="flex:'+v.p[0]+';background:var(--oh)"></span><span style="flex:'+v.p[1]+';background:var(--od)"></span><span style="flex:'+v.p[2]+';background:var(--oa)"></span></div>'+
+   '<p class="meta">Expected goals <b>'+v.lam.toFixed(2)+' – '+v.mu.toFixed(2)+'</b> · likeliest score <b>'+best[0]+'–'+best[1]+'</b> ('+pc(best[2])+')</p>';
+  if(m.result){var y=m.result.y,gave=v.p[y];
+    h+='<p class="resline"><b>'+(y===1?'Draw':esc(winner(m))+' won')+'.</b> We gave that outcome '+pc(gave)+'. '+(v.hit?'It was our favoured outcome.':'It was not our favoured outcome.')+
+      (m.book?' The bookmakers gave it '+pc(m.book.p[y])+' ('+m.book.when+').':'')+'</p>';}
+  h+='<button type="button" class="whybtn" aria-expanded="false"><span>Why this prediction?</span><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 5l5 5 5-5"/></svg></button><div class="drawer" hidden></div>';
+  art.innerHTML=h;
+  var btn=art.querySelector(".whybtn"),dr=art.querySelector(".drawer"),built=false;
+  btn.addEventListener("click",function(){var open=btn.getAttribute("aria-expanded")==="true";btn.setAttribute("aria-expanded",!open);dr.hidden=open;if(!open&&!built){drawer(dr,m);built=true;}});
+  return art;
+}
+
+/* ---------- the drawer ---------- */
+function termSteps(m,side){
+  var ex=m.explanation,t=side==="home"?ex.terms_lam:ex.terms_mu;
+  var nc=ex.newcomer,own=side==="home"?nc.home:nc.away;
+  var steps=[{l:"A typical team",d:t.base,first:true}];
+  steps.push({l:side==="home"?"Playing at home":"Playing away",d:t.home});
+  if(Math.abs(t.promoted)>1e-9)steps.push({l:own?"Newly promoted":"Facing a newly promoted side",d:t.promoted});
+  if(Math.abs(t.closed_doors)>1e-9)steps.push({l:"Closed-doors effect",d:t.closed_doors});
+  steps.push({l:"Shots on target signal",d:t.shots});
+  steps.push({l:"Results vs chances",d:t.adj,last:true});
+  var cum=0;steps.forEach(function(s){cum+=s.d;s.cum=Math.exp(cum);s.f=Math.exp(s.d);});
+  return steps;
+}
+function stepsChart(svg,m){
+  svg.innerHTML="";var X0=190,X1=560,max=Math.max(2.2,Math.ceil(Math.max(m.explanation.lam,m.explanation.mu)*1.3*5)/5),y=0;
+  function X(v){return X0+v/max*(X1-X0);}
+  [["home",m.home],["away",m.away]].forEach(function(pn){
+    var st=termSteps(m,pn[0]);
+    svg.appendChild(el("text",{x:0,y:y+14,style:"font:700 14px var(--f-display);fill:var(--ink)"},pn[1]+" expected goals"));y+=28;
+    st.forEach(function(r,i){var prev=i?st[i-1].cum:0,cur=r.cum,yy=y+i*34;
+      svg.appendChild(el("text",{x:X0-12,y:yy+16,"text-anchor":"end",class:r.last?"lab":"labm"},r.l));
+      svg.appendChild(el("rect",{x:X0,y:yy+4,width:Math.max(1,X(Math.min(prev,cur))-X0),height:18,rx:3,fill:"var(--soft)"}));
+      if(r.first||r.last)svg.appendChild(el("rect",{x:X0,y:yy+4,width:Math.max(2,X(cur)-X0),height:18,rx:3,fill:r.last?"var(--ink)":"var(--od)","fill-opacity":r.last?1:.55}));
+      else{var a=Math.min(prev,cur),b=Math.max(prev,cur);svg.appendChild(el("rect",{x:X(a),y:yy+4,width:Math.max(2,X(b)-X(a)),height:18,rx:3,fill:cur>=prev?"var(--up)":"var(--down)"}));}
+      svg.appendChild(el("text",{x:X(Math.max(prev,cur))+8,y:yy+17,class:"val"},(r.first?"":"×"+r.f.toFixed(2)+"  ")+"= "+cur.toFixed(2)));});
+    y+=st.length*34+22;});
+  svg.setAttribute("viewBox","0 0 680 "+(y-10));
+}
+function track(label,rank,n,color){var c="";for(var i=1;i<=n;i++)c+='<i'+(i===rank?' style="background:'+color+'"':'')+'></i>';
+  return '<div class="rank"><div class="rt"><span>'+label+'</span><span>'+ord(rank)+' of '+n+'</span></div><div class="cells">'+c+'</div></div>';}
+function formBlock(name,rows){
+  var g=rows.map(function(r){return '<div class="g"><span class="chip '+r.res+'">'+r.res+'</span><span class="o">'+(r.home?"v ":"at ")+esc(r.opp)+'</span><span class="sc">'+r.gf+'–'+r.ga+(r.sot_for!=null?' <span style="color:var(--muted)">('+r.sot_for+'–'+r.sot_against+')</span>':'')+'</span></div>';}).join("");
+  var gf=0,ga=0;rows.forEach(function(r){gf+=r.gf;ga+=r.ga;});
+  return '<div class="fm"><h5>'+esc(name)+'</h5>'+g+'<div class="fine" style="margin-top:2px">'+gf+' scored, '+ga+' conceded</div></div>';
+}
+function favourite(m,p){
+  var k=p.indexOf(Math.max.apply(null,p)),mx=p[k],name=k===0?m.home:k===2?m.away:null;
+  if(k===1)return "A draw is the single likeliest result, at "+pc(mx)+", but it is not a strong favourite.";
+  var tone=mx>=0.6?"strong favourites":mx>=0.45?"favourites":"only slight favourites";
+  return esc(name)+" are "+tone+" at "+pc(mx)+".";
+}
+function drawer(box,m){
+  var v=m.versions[H],ex=m.explanation,html="";
+  var best=[];for(var i=0;i<=8;i++)for(var j=0;j<=8;j++)best.push([i,j,pois(v.lam,i)*pois(v.mu,j)]);best.sort(function(a,b){return b[2]-a[2]});
+  var cs0=0,cs1=0,o25=0,btts=0;for(var a=0;a<=10;a++)for(var b=0;b<=10;b++){var q=pois(v.lam,a)*pois(v.mu,b);if(b===0)cs0+=q;if(a===0)cs1+=q;if(a+b>=3)o25+=q;if(a>0&&b>0)btts+=q;}
+  if(m.result){
+    var y=m.result.y,rows=D.versions.map(function(k){var d=m.versions[k];return d?'<div class="barrow"><span>'+esc(D.labels[k])+'</span><span class="mono">gave '+pc(d.p[y])+' · log loss '+d.loss.toFixed(2)+' · '+(d.hit?'right outcome':'wrong outcome')+'</span></div>':'';}).join("");
+    if(m.book&&m.book.loss!=null)rows+='<div class="barrow"><span>Bookmakers</span><span class="mono">gave '+pc(m.book.p[y])+' · log loss '+m.book.loss.toFixed(2)+' · '+(m.book.hit?'right outcome':'wrong outcome')+'</span></div>';
+    html+='<div class="reason"><span class="num">HOW IT TURNED OUT</span><h4>Full time: '+esc(m.home)+' '+m.result.hg+'–'+m.result.ag+' '+esc(m.away)+'</h4><div class="out cmp3">'+rows+'</div><p class="fine">Log loss is the penalty for the probability we gave the actual result: 0 would be perfect, and confident misses cost the most.</p></div>';
+  }
+  html+='<div class="reason"><span class="num">WHAT THE MODEL EXPECTS</span><div class="facts">'+
+   '<div class="fact"><div class="v">'+v.lam.toFixed(2)+' – '+v.mu.toFixed(2)+'</div><div class="k">expected goals</div></div>'+
+   '<div class="fact"><div class="v">'+pc(cs0)+'</div><div class="k">'+esc(m.home)+' keep a clean sheet</div></div>'+
+   '<div class="fact"><div class="v">'+pc(cs1)+'</div><div class="k">'+esc(m.away)+' keep a clean sheet</div></div>'+
+   '<div class="fact"><div class="v">'+pc(o25)+'</div><div class="k">three or more goals</div></div>'+
+   '<div class="fact"><div class="v">'+pc(btts)+'</div><div class="k">both teams score</div></div>'+
+   '<div class="fact"><div class="v">'+pc(1-cs0)+'</div><div class="k">'+esc(m.away)+' score at least once</div></div></div>'+
+   '<div>'+best.slice(0,5).map(function(r){var col=r[0]>r[1]?"var(--oh)":r[0]===r[1]?"var(--od)":"var(--oa)";return '<div class="sl"><span>'+esc(m.home.split(" ").pop())+' '+r[0]+'–'+r[1]+'</span><span class="tr"><b style="width:'+(r[2]/best[0][2]*100).toFixed(1)+'%;background:'+col+'"></b></span><span class="p">'+(r[2]*100).toFixed(1)+'%</span></div>';}).join("")+'</div>'+
+   '<p class="fine">Even the likeliest exact score is rarely more than a 1 in 6 chance. Football is low scoring, so no single scoreline is ever likely.</p></div>';
+  if(!ex){box.innerHTML=html+'<div class="reason"><p>A detailed explanation was not recorded for this match.</p></div>';return;}
+  var rk=ex.ranks,n=ex.n_clubs,hasShots=rk.home.shot_att!=null;
+  var cand=[["shots","home"],["shots","away"],["promoted","home"],["promoted","away"],["adj","home"],["adj","away"]].map(function(c){var t=c[1]==="home"?ex.terms_lam:ex.terms_mu;return {k:c[0],s:c[1],v:t[c[0]]};}).sort(function(a,b){return Math.abs(b.v)-Math.abs(a.v)})[0];
+  var tm=cand.s==="home"?m.home:m.away,op=cand.s==="home"?m.away:m.home,fx=Math.exp(cand.v).toFixed(2),big;
+  if(cand.k==="shots")big="the shots-on-target signal: "+esc(tm)+"’s shooting against "+esc(op)+"’s defence multiplies "+esc(tm)+"’s expected goals by ×"+fx+".";
+  else if(cand.k==="promoted"){var pt=ex.newcomer[cand.s]?tm:op;big="that "+esc(pt)+" are newly promoted. On average, promoted sides have scored less and conceded more than their ratings implied, which multiplies "+esc(tm)+"’s expected goals by ×"+fx+".";}
+  else big="results versus chances: "+esc(tm)+"’s goals against "+esc(op)+" run "+(cand.v>=0?"above":"below")+" what shots alone imply, a ×"+fx+" change to "+esc(tm)+"’s expected goals.";
+  html+='<div class="reason"><div class="short"><b>The short version</b><ul>'+
+   '<li>We expect '+esc(m.home)+' to score <b>'+v.lam.toFixed(1)+'</b> and '+esc(m.away)+' <b>'+v.mu.toFixed(1)+'</b>. Combining goals and shots on target, '+esc(m.home)+' rank '+ord(rk.home.att)+' for attack and '+ord(rk.home.def)+' for defence among '+n+' clubs; '+esc(m.away)+' rank '+ord(rk.away.att)+' and '+ord(rk.away.def)+'.</li>'+
+   '<li>The largest adjustment beyond home advantage is '+big+'</li>'+
+   '<li>That turns into '+pc(v.p[0])+' for '+esc(m.home)+', '+pc(v.p[1])+' for a draw and '+pc(v.p[2])+' for '+esc(m.away)+'. '+favourite(m,v.p)+'</li></ul></div></div>';
+  html+='<div class="reason"><span class="num">REASON 1</span><h4>We start from a typical match and adjust it</h4><p>A typical team scores about <b>'+Math.exp(ex.terms_lam.base).toFixed(2)+'</b> goals against a typical defence away from home. Each step changes that number for a reason you can name. Green steps raise it, red steps lower it, and the black bar is the number of goals we expect.</p><svg class="fig" data-steps viewBox="0 0 680 400" role="img" aria-label="Expected goals build-up for both teams"></svg></div>';
+  if(hasShots){
+    html+='<div class="reason"><span class="num">REASON 2</span><h4>Shots on target tell us more than goals do</h4><p>Goals are rare, so a team’s results can flatter or fool you. Shots on target happen more often, so they show quality sooner. Here is where each team ranks among this season’s '+n+' clubs (1st is best, and for “allowed” 1st means fewest).</p><div class="ranks">'+
+     track(esc(m.home)+" shots on target created",rk.home.shot_att,n,"var(--oh)")+track(esc(m.away)+" shots on target allowed",rk.away.shot_def,n,"var(--oa)")+
+     track(esc(m.away)+" shots on target created",rk.away.shot_att,n,"var(--oa)")+track(esc(m.home)+" shots on target allowed",rk.home.shot_def,n,"var(--oh)")+
+     '</div><p>'+esc(m.home)+'’s shooting against '+esc(m.away)+'’s defence ('+ord(rk.home.shot_att)+' against '+ord(rk.away.shot_def)+') is worth <b>×'+Math.exp(ex.terms_lam.shots).toFixed(2)+'</b> on '+esc(m.home)+'’s goals. '+esc(m.away)+'’s shooting against '+esc(m.home)+'’s defence ('+ord(rk.away.shot_att)+' against '+ord(rk.home.shot_def)+') is worth <b>×'+Math.exp(ex.terms_mu.shots).toFixed(2)+'</b> on '+esc(m.away)+'’s goals.</p></div>';
+  }
+  html+='<div class="reason"><span class="num">REASON 3</span><h4>We check results against chances</h4><p>Shots are only part of the story, so goals correct them. For this match the correction is <b>×'+Math.exp(ex.terms_lam.adj).toFixed(2)+'</b> on '+esc(m.home)+'’s expected goals and <b>×'+Math.exp(ex.terms_mu.adj).toFixed(2)+'</b> on '+esc(m.away)+'’s. Each is the combined effect of the scoring team’s finishing and the opponent’s goalkeeping and defending relative to their shots. The corrections are deliberately small, because a few lucky or unlucky results should not outweigh a long record of chances.</p></div>';
+  html+='<div class="reason"><span class="num">REASON 4</span><h4>Recent matches count more, but we use all of them</h4><p>Every match since 2015/16 is in the model. A goal result counts half as much after about '+(D.decay.goals_months).toFixed(1).replace(/\.0$/,"")+' months'+(D.decay.shots_months?', and shots on target after about '+D.decay.shots_months.toFixed(1).replace(/\.0$/,"")+' months':'')+'. So the last few weeks matter most, and one result does not swing a rating. Here is each team’s recent run for context, with shots on target in brackets as <span class="mono" style="color:var(--ink)">for–against</span>.</p><div class="formtable">'+formBlock(m.home,ex.form.home)+formBlock(m.away,ex.form.away)+'</div>';
+  if(ex.h2h&&ex.h2h.length){var w1=0,dr=0,l1=0;ex.h2h.forEach(function(r){var hs=r.home===m.home?r.hg:r.ag,as=r.home===m.home?r.ag:r.hg;if(hs>as)w1++;else if(hs===as)dr++;else l1++;});
+    html+='<p class="fine">Head-to-head history is not a model input. For the record, in the last '+ex.h2h.length+' meetings '+esc(m.home)+' won '+w1+', drew '+dr+' and lost '+l1+'.</p>';}
+  html+='</div>';
+  html+='<div class="reason"><span class="num">REASON 5</span><h4>Three model versions, one headline</h4><p>We run three versions side by side and score all of them. The headline above is <b>'+esc(D.labels[H])+'</b>. The versions that use goals alone pull every rating closer to average, because goals are noisy; the shots version also uses shots on target, a steadier measure. Which approach predicts better over a season is exactly what the scoreboard at the top will show.</p><div class="cmp3">'+
+   D.versions.map(function(k){var d=m.versions[k];if(!d)return"";var s=share(d.p,100,0);return '<div class="barrow"><span style="font-weight:'+(k===H?600:400)+';color:'+(k===H?"var(--ink)":"var(--muted)")+'">'+esc(D.labels[k])+'</span><div class="stack"><span style="flex:'+d.p[0]+';background:var(--oh);color:var(--toh)">'+s[0]+'%</span><span style="flex:'+d.p[1]+';background:var(--od);color:var(--tod)">'+s[1]+'%</span><span style="flex:'+d.p[2]+';background:var(--oa);color:var(--toa)">'+s[2]+'%</span></div></div>';}).join("")+'</div></div>';
+  var pm=Math.max.apply(null,v.p),lowMu=Math.min(v.lam,v.mu),lowTeam=v.lam<v.mu?m.home:m.away;
+  html+='<div class="reason"><span class="num">HOW SURE ARE WE?</span><h4>A favourite is not a certainty</h4><p>A chance of '+pc(pm)+' for the likeliest outcome means that in roughly '+Math.round((1-pm)*100)+' of 100 matches like this one, something else happens. Even with only '+lowMu.toFixed(1)+' expected goals, '+esc(lowTeam)+' still score at least once about '+pc(1-Math.exp(-lowMu))+' of the time, and one goal can turn a match. Forecasts like this are judged over hundreds of matches, not one.</p><p>The model has no information on injuries, suspensions, line-ups, tiredness or tactics, and the bookmakers price some of that in. Frozen '+fdate(m.logged_at.slice(0,10))+', using '+m.n_train.toLocaleString("en-GB")+' matches up to '+fdate(m.last_train_date)+'.</p></div>';
+  box.innerHTML=html;
+  var svg=box.querySelector("[data-steps]");if(svg)stepsChart(svg,m);
+}
+
+/* ---------- render ---------- */
+function render(){
+  tabs();var w=D.weeks[cur];
+  $("wkTitle").textContent="Matchweek "+w.matchweek;$("wkSum").textContent=weekSummary(w);
+  var box=$("matches");box.innerHTML="";
+  w.matches.forEach(function(m,i){box.appendChild(card(m,w.matchweek+"-"+i));});
+}
+render();
+})();
+</script>
+
+</body>
+</html>
