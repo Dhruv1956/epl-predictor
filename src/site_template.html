@@ -265,7 +265,7 @@ function card(m,idx){
   var v=m.versions[H],ex=m.explanation,p=share(v.p,100,0),art=document.createElement("article");art.className="card mcard";art.id="m"+idx;
   var g=m.grid,best=g.best,fk=["H","D","A"][v.p.indexOf(Math.max.apply(null,v.p))],rname={H:m.home+" win",D:"a draw",A:m.away+" win"};
   var status=m.result?'<span class="chip2 ft">Full time '+m.result.hg+'–'+m.result.ag+'</span>':'<span class="chip2">Locked · pending</span>';
-  var h='<div class="mtop"><span class="eyebrow">'+fdate(m.date)+(ftime(m)?' · '+ftime(m):'')+'</span>'+status+'</div>'+
+  var h='<div class="mtop"><span class="eyebrow">'+fdate(m.date)+(ftime(m)&&!m.result?' · '+ftime(m):'')+'</span>'+status+'</div>'+
    '<div class="teams"><div class="team home"><div class="nm">'+esc(m.home)+'</div>'+(ex?'<div class="formrow">'+chips(ex.form.home)+'</div>':'')+'</div><div class="vs">v</div>'+
    '<div class="team away"><div class="nm">'+esc(m.away)+'</div>'+(ex?'<div class="formrow">'+chips(ex.form.away)+'</div>':'')+'</div></div>'+
    '<div class="probs"><div class="pr h"><div class="big">'+p[0]+'%</div><div class="lab"><i class="sw" style="background:var(--oh)"></i>'+esc(m.home)+' win</div></div>'+
@@ -276,7 +276,8 @@ function card(m,idx){
    (g.best_key!==fk?'<br><span class="fine">'+esc(rname[fk].charAt(0).toUpperCase()+rname[fk].slice(1))+' is still the likeliest result ('+pc(g[fk].p)+'): a result adds up many scores, so no single score of it beats '+best[0]+'–'+best[1]+'. Likeliest score for it: <b>'+g[fk].top[0][0]+'–'+g[fk].top[0][1]+'</b> ('+pc(g[fk].top[0][2])+').</span>':'')+'</p>';
   if(m.result){var y=m.result.y,gave=v.p[y];
     h+='<p class="resline"><b>'+(y===1?'Draw':esc(winner(m))+' won')+'.</b> We gave that outcome '+pc(gave)+'. '+(v.hit?'It was our favoured outcome.':'It was not our favoured outcome.')+
-      (m.book?' The bookmakers gave it '+pc(m.book.p[y])+' ('+m.book.when+').':'')+'</p>';}
+      (m.book?' The bookmakers gave it '+pc(m.book.p[y])+' ('+m.book.when+').':'')+'</p>';
+    if(m.date_logged)h+='<p class="fine">This match was logged under '+fdate(m.date_logged)+' in the frozen fixture list, which had the date wrong; it was played on '+fdate(m.date)+'. The frozen prediction itself is unchanged.</p>';}
   h+='<button type="button" class="whybtn" aria-expanded="false"><span>Why this prediction?</span><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 5l5 5 5-5"/></svg></button><div class="drawer" hidden></div>';
   art.innerHTML=h;
   var btn=art.querySelector(".whybtn"),dr=art.querySelector(".drawer"),built=false;
@@ -392,9 +393,10 @@ function modes(){var n=$("modes");if(!D.backtest){n.hidden=true;return;}n.hidden
     b.innerHTML='<span class="a">'+o[1]+'</span><span class="b">'+o[2]+'</span>';
     b.addEventListener("click",function(){MODE=o[0];pick();try{history.replaceState(null,"","#"+(MODE==="bt"?"bt":"mw")+SRC().weeks[cur].matchweek);}catch(e){}render();});n.appendChild(b);});}
 function banner(){var b=$("btbanner");if(MODE!=="bt"||!D.backtest){b.hidden=true;return;}b.hidden=false;
-  var sk=D.backtest.skipped||[],s="";
+  var sk=D.backtest.skipped||[],s="",o=D.backtest.overlap;
   if(sk.length)s=" Round"+(sk.length>1?"s ":" ")+sk.map(function(x){return x.round;}).join(", ")+" "+(sk.length>1?"are":"is")+" left out because the data has no earlier match for "+sk.reduce(function(a,x){return a.concat(x.teams);},[]).join(", ")+", so the model cannot rate them yet.";
-  b.innerHTML='<b>This is a backtest, not a locked forecast.</b> For each round, all three models were refitted using only matches played before that round’s first kickoff, then asked to predict the round, and the predictions were compared with what happened. The code and settings were fixed before these rounds were examined, but the matches had already been played when the test was run, so it carries less weight than the live predictions.'+s+' Bookmaker odds come from the match table (average odds, margin removed).';}
+  b.innerHTML='<b>This is a backtest, not a locked forecast.</b> For each round, all three models were refitted using only matches played before that round’s first kickoff, then asked to predict the round, and the predictions were compared with what happened. The code and settings were fixed before these rounds were examined, but the matches had already been played when the test was run, so it carries less weight than the live predictions.'+s+' Bookmaker odds come from the match table (average odds, margin removed).'+
+    (o?' Matchweek'+(o.matchweeks.length>1?'s ':' ')+o.matchweeks.join(", ")+' '+(o.matchweeks.length>1?'are':'is')+' also in the live log. Refitting '+(o.n>1?'those '+o.n+' matches':'that match')+' from scratch reproduces the frozen predictions to within '+o.max_diff.toExponential(0)+', a check that the backtest does what it says.':'');}
 function topTerm(m){var ex=m.explanation;if(!ex)return"";
   var c=[["shots","home"],["shots","away"],["promoted","home"],["promoted","away"],["adj","home"],["adj","away"]].map(function(c){var t=c[1]==="home"?ex.terms_lam:ex.terms_mu;return {k:c[0],s:c[1],v:t[c[0]]};}).sort(function(a,b){return Math.abs(b.v)-Math.abs(a.v)})[0];
   var tm=c.s==="home"?m.home:m.away,kind=c.k==="shots"?"the shots-on-target signal":c.k==="promoted"?"the record of newly promoted sides":"the goals-versus-chances correction";

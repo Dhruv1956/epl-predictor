@@ -119,3 +119,20 @@ def test_site_data_carries_the_backtest_and_scores_it_like_live(league, tmp_path
     assert all(m["explanation"] is not None for w in bt["weeks"] for m in w["matches"])
     json.dumps(d)                                      # NaN-free, serialisable
     assert SD.build_data(log, expl, path)["backtest"] is None   # absent unless asked for
+
+
+def test_overlap_with_the_live_log_is_reported(league, tmp_path):
+    """Matches in both the live log and the backtest are refitted from scratch; the page reports how closely they agree."""
+    tmp, full, *_ = league
+    log, expl, _ = _freeze(tmp)
+    path = _write_full(tmp, full)
+    rounds, _cur = _last_rounds(path)
+    season, scored, blog, bexpl, skipped = B.run(path, rounds)
+    out = tmp_path / "bt2"
+    B.write_outputs(out, season, blog, bexpl, skipped, sorted(rounds))
+    o = SD.build_data(log, expl, path, backtest_dir=out)["backtest"]["overlap"]
+    assert o is not None and o["n"] > 0 and o["matchweeks"]
+    assert np.isfinite(o["max_diff"]) and o["max_diff"] >= 0
+    # identical inputs give identical probabilities: compare the live log with itself
+    same = SD._overlap(log, log)
+    assert same["max_diff"] == 0.0 and same["n"] == len(pd.read_csv(log)) // len(L.MODELS)

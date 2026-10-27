@@ -88,7 +88,22 @@ def matchweek_number(played, home, away, date):
     return max(n(home), n(away)) + 1
 
 
-def _backtest_section(backtest_dir, matches_path, now):
+def _overlap(live_log, bt_log):
+    """Matches that are in both the frozen live log and the backtest: the backtest refits them from scratch, so
+    how closely it reproduces the frozen probabilities is a check on the backtest itself."""
+    a, b = pd.read_csv(live_log), pd.read_csv(bt_log)
+    key = ["model_version", "home", "away"]
+    j = a.merge(b, on=key, suffixes=("_l", "_b"))
+    gap = (pd.to_datetime(j["match_date_l"]) - pd.to_datetime(j["match_date_b"])).abs().dt.days
+    j = j[gap <= 7]  # same pairing rule as the scorer: a frozen date can be a day out
+    if j.empty:
+        return None
+    cols = ["pH", "pD", "pA", "lam", "mu"]
+    keys = set(zip(j["match_date_b"].astype(str), j["home"], j["away"]))
+    return {"n": len(keys), "max_diff": float(max(np.abs(j[c + "_l"] - j[c + "_b"]).max() for c in cols)), "keys": keys}
+
+
+def _backtest_section(backtest_dir, matches_path, now, live_log=None):
     """Weeks + scoreboard for the backtest, or None if the backtest files are not there."""
     d = Path(backtest_dir)
     log, expl, meta = d / "predictions_log.csv", d / "explanations.jsonl", d / "meta.json"
@@ -96,7 +111,11 @@ def _backtest_section(backtest_dir, matches_path, now):
         return None
     sub = build_data(log, expl, matches_path, now=now)  # same code path as the live data
     info = json.loads(meta.read_text()) if meta.exists() else {}
-    return {"weeks": sub["weeks"], "scoreboard": sub["scoreboard"], "season": info.get("season", sub["season"]),
+    overlap = _overlap(live_log, log) if live_log is not None else None
+    if overlap:
+        keys = overlap.pop("keys")
+        overlap["matchweeks"] = [w["matchweek"] for w in sub["weeks"] if any((m["date"], m["home"], m["away"]) in keys for m in w["matches"])]
+    return {"overlap": overlap, "weeks": sub["weeks"], "scoreboard": sub["scoreboard"], "season": info.get("season", sub["season"]),
             "rounds": info.get("rounds", []), "skipped": info.get("skipped", []),
             "generated_at": info.get("generated_at", "")}
 
@@ -142,6 +161,8 @@ def build_data(log_path, explanations_path, matches_path, now=None, backtest_dir
         if any_res is not None:
             y = int(any_res.y)
             m["result"] = {"hg": int(any_res.FTHG), "ag": int(any_res.FTAG), "y": y, "played_on": any_res.Date.strftime("%Y-%m-%d")}
+            if m["result"]["played_on"] != date:       # the frozen date was a day out: show the real one, say so
+                m["date_logged"], m["date"] = date, m["result"]["played_on"]
             if m["book"] is None and all(pd.notna(x) for x in (any_res.bookH, any_res.bookD, any_res.bookA)):
                 m["book"] = {"p": [any_res.bookH, any_res.bookD, any_res.bookA], "source": "match table", "when": "after the match"}
             for v, d in m["versions"].items():
@@ -193,7 +214,7 @@ def build_data(log_path, explanations_path, matches_path, now=None, backtest_dir
              "shots_months": math.log(2) / cfg["spec"].shots_xi * 12 if cfg["spec"].shots else None}
     backtest = None
     if backtest_dir is not None:
-        backtest = _backtest_section(backtest_dir, matches_path, now)
+        backtest = _backtest_section(backtest_dir, matches_path, now, live_log=log_path)
     return clean({
         "backtest": backtest,
         "decay": decay,

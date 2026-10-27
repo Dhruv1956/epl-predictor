@@ -1,0 +1,21 @@
+# Bug and fix log
+
+Every mistake found while building the project, what it affected, and how it was fixed. Entries for Phases 1 and 2 were
+recorded in the checkpoint reports; this file starts with Phase 3 and the report and website work (from 20 Oct 2026).
+The rule behind it: a number or claim goes into a report only if it can be traced to a pasted output, a checkpoint
+result or arithmetic, and every fix gets a test where a test is possible.
+
+| # | Found | What went wrong | Effect | Fix |
+|---|---|---|---|---|
+| 1 | 20 Oct | Checkpoint 2 draft contained numbers with no source. | Could have put unverified figures in the report. | Removed or replaced with sourced values (user-pasted outputs, Checkpoint 1 results, or arithmetic). |
+| 2 | 21 Oct | Section 5.4 said the shots model was "best in every season" and that Pinnacle was "within 0.001". | Overclaim. | Rewritten from the table: not best in 2019/20, 2020/21 or 2022/23; Pinnacle within about 0.002. |
+| 3 | 21 Oct | The gap to the bookmakers was described as "widening and unexplained". | Misleading. | Corrected: a bump in 2021/22 to 2023/24, back to about 0.009 in the latest seasons; cause still unknown. |
+| 4 | 21 Oct | Match-card draft: "Everton score at least once" used the wrong side of the score grid; explanation text had wrong decay months and a wrong shot-creation rank. | Wrong figures in an explanation. | Away-score probability is 1 minus the home clean-sheet probability; decay text 5.5 and 8.3 months; ranks re-read from the data. |
+| 5 | 21 Oct | A single shell command carrying the whole page template failed (argument list too long). | Build step failed. | Template is written as a file and copied; small files via heredoc. |
+| 6 | 21 Oct | The first chart palette failed the colour-blind validator. | Hard to tell models apart. | Replaced with palettes that pass for light and dark mode. |
+| 7 | 22 Oct | A scoreboard test joined the full match history to the log on team names only, so earlier meetings of the same teams were scored too (log loss 1.067 instead of 0.959). | A test that would have blessed wrong numbers. | Join on date and both teams, and assert the row count. The site code was correct. |
+| 8 | 22 Oct | Backtest round 1 cannot be run: Coventry, newly promoted, has no earlier match in the table ("Teams not found"). | Round 1 missing from the backtest. | Round is skipped and the reason is recorded in `backtest/meta.json` and shown on the page. This is a real limitation of the model for unseen teams, not something to paper over. |
+| 9 | 22 Oct | Backtest refits used a temporary copy of the match table with no shots file next to it ("shots data is missing"). | Shots model could not run. | Shots are merged into the truncated copy before fitting; same-match shots are still never used. |
+| 10 | 22 Oct | The page's score breakdown first used a 0 to 20 goals grid. The logged probabilities use 0 to 10 renormalised. | Grouped scores differed from the logged probabilities by about 5e-5. | Same grid as the log; a test checks that the groups add up to the logged win, draw and loss probabilities for every match. |
+| 11 | 27 Oct | The hand-made fixture list for Matchweek 8 was wrong in three places: Liverpool v Brighton dated 24 Oct 12:30 (played 25 Oct 14:00), Arsenal v Everton and Coventry v Fulham at 12:30 (kicked off 15:00). | The frozen log carries those dates and times. No leakage: every real kickoff was later than the frozen one, and predictions were frozen on 20 Oct. Scoring still paired the matches (7-day rule), but the page showed a wrong date. | The frozen log is append-only and was not edited. The page shows the played date, adds a note on the card, and shows no kickoff time for played matches. The backtest/live overlap check pairs by teams within 7 days. Test added. Lesson: take fixtures from football-data.co.uk's fixtures file, or check each against the official site, before freezing. |
+| 12 | 26 to 27 Oct | Downloading results failed with "SSL certificate problem" on the college Wi-Fi. The certificate was issued by Sophos: the network inspects HTTPS. | Could not refresh results on that network. | Use a phone hotspot. Certificate checking is not turned off. `scripts/refresh.sh` stops with a clear message and changes nothing if the download fails. |

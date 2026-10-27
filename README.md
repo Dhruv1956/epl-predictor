@@ -95,3 +95,10 @@ This is not a substitute for the live log: the code and settings were fixed befo
 but the matches had already been played when the test was run. Rounds with a team that has no earlier match in
 the data (round 1 for a newly promoted side) are skipped. `tests/test_backtest.py` checks that the training set is
 exactly the matches before each round, and that changing the results inside a round cannot change its predictions.
+
+### One-command refresh after each matchweek
+
+`bash scripts/refresh.sh` downloads the new results, rebuilds `matches.csv` and the shots table, scores the live log,
+refreshes the backtest and rebuilds the website. If football-data.co.uk has not published new results yet it changes
+nothing and says so. On a network that inspects HTTPS (some college Wi-Fi), the download fails with a certificate
+error; use a phone hotspot rather than disabling certificate checks.

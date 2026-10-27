@@ -141,3 +141,26 @@ def test_likeliest_score_can_be_a_draw_while_a_win_is_the_likeliest_result():
     assert g["H"]["top"][0][:2] == [2, 1] and g["H"]["top"][0][2] < g["best"][2]          # no single win beats 1-1 ...
     assert g["H"]["p"] > g["D"]["p"] * 2                                                  # ... but the wins add up to far more
     assert g["H"]["p"] == pytest.approx(0.510, abs=1e-3) and g["D"]["p"] == pytest.approx(0.227, abs=1e-3)
+
+
+def test_a_wrong_frozen_date_is_shown_as_the_real_played_date(league, tmp_path):
+    """The hand-made fixture list once had a match a day out. The log stays as frozen, the page shows the played date."""
+    tmp, full, upcoming, cut = league
+    log, expl, _ = _freeze(tmp)
+    full.to_csv(tmp / "matches.csv", index=False)          # results arrive
+    lg = pd.read_csv(log)
+    first = lg.iloc[0]
+    wrong = lg.copy()
+    mask = (wrong["home"] == first["home"]) & (wrong["away"] == first["away"])
+    real = wrong.loc[mask, "match_date"].iloc[0]
+    wrong.loc[mask, "match_date"] = (pd.Timestamp(real) - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    bad_log = tmp_path / "bad_log.csv"
+    wrong.to_csv(bad_log, index=False)
+    before = bad_log.read_bytes()
+    d = SD.build_data(bad_log, expl, tmp / "matches.csv")
+    ms = {(m["home"], m["away"]): m for w in d["weeks"] for m in w["matches"]}
+    m = ms[(first["home"], first["away"])]
+    assert m["date"] == real and m["date_logged"] != real                    # real date shown, logged one remembered
+    assert d["scoreboard"]["n"] == len(upcoming)                             # still scored
+    assert all("date_logged" not in x for k, x in ms.items() if k != (first["home"], first["away"]))
+    assert bad_log.read_bytes() == before                                    # building the page never edits the log
