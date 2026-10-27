@@ -1,5 +1,7 @@
 # EPL Match Outcome Predictor
 
+**Website: https://dhruv1956.github.io/epl-predictor/** (predictions, findings and the maths; needs GitHub Pages switched on, see "Website" below).
+
 Predicts P(home win), P(draw) and P(away win) for Premier League matches. The models are
 independent-Poisson goal models fitted by weighted, ridge-penalised maximum likelihood with
 exponential time decay. The log-likelihood and its gradients are derived by hand and implemented
@@ -102,3 +104,14 @@ exactly the matches before each round, and that changing the results inside a ro
 refreshes the backtest and rebuilds the website. If football-data.co.uk has not published new results yet it changes
 nothing and says so. On a network that inspects HTTPS (some college Wi-Fi), the download fails with a certificate
 error; use a phone hotspot rather than disabling certificate checks.
+
+## Website
+
+`python -m src.site` builds `docs/index.html`, one self-contained page with three sections: **Predictions**
+(every locked forecast, results, and the backtest), **Findings** (model ladder, season-by-season gap to the
+bookmakers, shots evidence, live and backtest tables, what did not work, limits) and **Method** (the maths).
+Findings numbers come from the CSVs in `reports/` (`src/findings.py`; `tests/test_findings.py` checks them).
+
+To publish: repository Settings, Pages, Source = "Deploy from a branch", Branch = `main`, folder = `/docs`.
+The site is then at https://dhruv1956.github.io/epl-predictor/ . Add that address to the repository's
+"About" box (Website field) so it shows on the repo's front page.

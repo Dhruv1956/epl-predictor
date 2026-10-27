@@ -169,6 +169,38 @@ footer{font-size:.8rem;color:var(--muted);padding:4px 4px 0;display:grid;gap:6px
 }
 @media (max-width:380px){.team .nm{font-size:1.1rem}}
 @media (prefers-reduced-motion:reduce){.whybtn svg{transition:none}}
+
+/* findings + method pages */
+#pg-pred,#pg-find,#pg-method{display:grid;gap:18px}
+#pg-pred[hidden],#pg-find[hidden],#pg-method[hidden]{display:none}
+.sec{padding:22px 24px;display:grid;gap:14px}
+.sec h2{font-size:1.2rem}
+.sec h3{font-size:1rem;margin-top:4px}
+.takes{display:grid;gap:10px;margin:0;padding:0;list-style:none}
+.takes li{padding-left:18px;position:relative}
+.takes li:before{content:"";position:absolute;left:2px;top:.68em;width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.fig{width:100%;height:auto;display:block;overflow:visible}
+.fig text{font-family:var(--f-mono);font-size:11px;fill:var(--muted)}
+.fig text.lab{fill:var(--ink);font-family:var(--f-body);font-size:12.5px}
+.fig text.val{fill:var(--ink);font-weight:500}
+.fig text.lab,.fig text.val{paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
+.fig .gl{stroke:var(--line);stroke-width:1}
+.fig .zero{stroke:var(--ink);stroke-width:1.5}
+.fig .bk{stroke:var(--oa);stroke-width:1.5;stroke-dasharray:4 3}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:.84rem;color:var(--muted)}
+.legend svg{vertical-align:-2px;margin-right:6px}
+.eq{font:500 .86rem/1.9 var(--f-mono);background:var(--soft);border-radius:10px;padding:10px 14px;overflow-x:auto;white-space:pre}
+.kgrid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.kpi{background:var(--soft);border-radius:12px;padding:14px 16px;display:grid;gap:4px;align-content:start}
+.kpi b{font:700 1.7rem/1 var(--f-display);letter-spacing:-.03em}
+.kpi span{font-size:.82rem;color:var(--muted);line-height:1.4}
+.dl{display:grid;gap:10px;margin:0}
+.dl dt{font-weight:600}
+.dl dd{margin:0;color:var(--muted);font-size:.92rem}
+.links{display:flex;flex-wrap:wrap;gap:10px}
+.links a{color:var(--accent-ink);font-weight:600;text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:8px 14px;background:var(--surface)}
+.links a:hover{border-color:var(--accent)}
+@media (max-width:620px){#pages .tab{flex:1;padding:9px 8px}#pages .tab .b{display:none}.sec{padding:18px 16px}.eq{font-size:.76rem}}
 </style>
 
 <div class="col">
@@ -179,6 +211,8 @@ footer{font-size:.8rem;color:var(--muted);padding:4px 4px 0;display:grid;gap:6px
     <span class="stamp" id="stamp"></span>
   </header>
 
+  <nav class="tabs" id="pages" aria-label="Site sections"></nav>
+  <div id="pg-pred">
   <nav class="tabs" id="modes" aria-label="Live predictions or backtest" hidden></nav>
   <div class="btbanner" id="btbanner" hidden></div>
   <section class="card board" id="board" aria-label="Scoreboard"></section>
@@ -187,6 +221,10 @@ footer{font-size:.8rem;color:var(--muted);padding:4px 4px 0;display:grid;gap:6px
   <div class="weekhead"><h2 id="wkTitle"></h2><span class="sum" id="wkSum"></span></div>
   <section class="card cmpcard" id="cmp" aria-label="Round comparison" hidden></section>
   <div id="matches" style="display:grid;gap:16px"></div>
+
+  </div>
+  <div id="pg-find" hidden></div>
+  <div id="pg-method" hidden></div>
 
   <footer>
     <span>Models fitted on Premier League results and shots on target since 2015/16. Match data and odds from football-data.co.uk.</span>
@@ -428,13 +466,137 @@ function cmp(w){var box=$("cmp"),done=w.matches.filter(function(m){return m.resu
   box.innerHTML='<div><h2>How the models and the bookmakers did</h2><p class="note" style="margin-top:6px">Each cell is the probability given to what actually happened, so higher is better, and the best in each row is bold. “v0”, “v1” and “v2” are the three model versions; the headline is '+esc(D.labels[H])+'. The ± is a standard error that treats the matches as independent, so with this few matches treat small gaps as noise.</p></div>'+
    '<div class="tablewrap"><table><thead><tr><th>Match</th>'+K.map(function(k){return '<th title="'+esc(D.labels[k])+'">'+esc(k.split("-")[0])+'</th>';}).join("")+'<th><span class="hdl">Bookmakers</span><span class="hds">Odds</span></th></tr></thead><tbody>'+rows+foot+'</tbody></table></div>'+story;}
 
+
+/* ---------- pages: Predictions / Findings / Method ---------- */
+var PAGE="pred",F=D.findings||null;
+function route(){var h=location.hash.replace("#","");PAGE=(h==="findings"&&F)?"find":(h==="method"&&F)?"method":"pred";}
+function pagesNav(){var n=$("pages");if(!F){n.hidden=true;return;}n.hidden=false;n.innerHTML="";
+  [["pred","Predictions","every match, locked first","mw"],["find","Findings","what the models showed","findings"],["method","Method","the maths, step by step","method"]].forEach(function(o){
+    var b=document.createElement("button");b.type="button";b.className="tab";b.setAttribute("aria-pressed",PAGE===o[0]);
+    b.innerHTML='<span class="a">'+o[1]+'</span><span class="b">'+o[2]+'</span>';
+    b.addEventListener("click",function(){if(o[0]==="pred"){var W=SRC().weeks;try{history.replaceState(null,"","#"+(MODE==="bt"?"bt":"mw")+W[cur].matchweek);}catch(e){}}else{try{history.replaceState(null,"","#"+o[3]);}catch(e){}}render();window.scrollTo(0,0);});
+    n.appendChild(b);});}
+function f4(x){return (x>=0?"+":"−")+Math.abs(x).toFixed(4);}
+function f3(x){return (x>=0?"+":"−")+Math.abs(x).toFixed(3);}
+function W0(id){var e=$(id);return Math.max(280,Math.min(720,e.clientWidth||600));}
+function S(w,h,body,label){return '<svg class="fig" viewBox="0 0 '+w+' '+h+'" width="'+w+'" height="'+h+'" role="img" aria-label="'+esc(label)+'">'+body+'</svg>';}
+function mark(shape,x,y,col,hollow,r){r=r||5.5;var f=hollow?'var(--surface)':col,st=' stroke="'+col+'" stroke-width="2"';
+  if(shape==="d")return '<path d="M'+x+' '+(y-r-1.5)+'L'+(x+r+1.5)+' '+y+'L'+x+' '+(y+r+1.5)+'L'+(x-r-1.5)+' '+y+'Z" fill="'+f+'"'+st+'/>';
+  return '<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="'+f+'"'+st+'/>';}
+function legendItem(shape,col,hollow,text){return '<span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">'+mark(shape,8,8,col,hollow,4.2)+'</svg>'+esc(text)+'</span>';}
+
+/* Chart 1: where each model lands on the test window */
+function ladderChart(){var L=F.ladder,w=W0("c1"),pad=14,rowH=46,top=26,h=top+L.length*rowH+30,lo=0.95,hi=1.11;
+  function X(v){return pad+(v-lo)/(hi-lo)*(w-2*pad-52);}
+  var b="";[0.95,1.00,1.05,1.10].forEach(function(t){b+='<line class="gl" x1="'+X(t)+'" x2="'+X(t)+'" y1="'+(top-6)+'" y2="'+(h-24)+'"/><text x="'+X(t)+'" y="'+(h-8)+'" text-anchor="middle">'+t.toFixed(2)+'</text>';});
+  b+='<line class="bk" x1="'+X(F.book_test_ll)+'" x2="'+X(F.book_test_ll)+'" y1="'+(top-10)+'" y2="'+(h-24)+'"/><text class="val" x="'+(X(F.book_test_ll)+5)+'" y="'+(top-12)+'">bookmakers</text>';
+  L.forEach(function(r,i){var y=top+i*rowH+rowH-12,col=r.kind==="book"?"var(--oa)":r.kind==="baseline"?"var(--od)":"var(--oh)";
+    b+='<text class="lab" x="'+pad+'" y="'+(y-14)+'">'+esc(r.label)+'</text>';
+    b+='<line x1="'+X(lo)+'" x2="'+X(r.ll)+'" y1="'+y+'" y2="'+y+'" stroke="'+col+'" stroke-width="2" opacity=".55"/>';
+    b+=mark(r.kind==="book"?"d":"c",X(r.ll),y,col,false,5.5)+'<title>'+esc(r.label)+': log loss '+r.ll.toFixed(4)+'</title>';
+    b+='<text class="val" x="'+(X(r.ll)+12)+'" y="'+(y+4)+'">'+r.ll.toFixed(4)+'</text>';});
+  return S(w,h,b,"Test-window log loss for each predictor, from the uniform baseline down to the bookmakers");}
+
+/* Chart 2: gap to the bookmakers, season by season */
+function seasonChart(){var Q=F.seasons,w=W0("c2"),h=300,L=44,R=10,T=14,B=48,lo=-0.015,hi=0.042,n=Q.length,narrow=(w-L-R)/n<42;
+  function Y(v){return T+(hi-v)/(hi-lo)*(h-T-B);}
+  function X(i){return L+(i+.5)*(w-L-R)/n;}
+  var b="";[-0.01,0,0.01,0.02,0.03,0.04].forEach(function(t){b+=(t===0?'<line class="zero" x1="'+L+'" x2="'+(w-R)+'"':'<line class="gl" x1="'+L+'" x2="'+(w-R)+'"')+' y1="'+Y(t)+'" y2="'+Y(t)+'"/><text x="'+(L-6)+'" y="'+(Y(t)+4)+'" text-anchor="end">'+(t>0?"+":t<0?"−":"")+Math.abs(t).toFixed(2)+'</text>';});
+  var dx=Math.min(7,(w-L-R)/n/4);
+  Q.forEach(function(s,i){var x=X(i);
+    [["v0-poisson","c","var(--oh)",-dx],["v2-shots","d","var(--oa)",dx]].forEach(function(o){var g=s[o[0]];if(!g)return;var xx=x+o[3];
+      b+='<line x1="'+xx+'" x2="'+xx+'" y1="'+Y(Math.max(lo,g[0]-g[1]))+'" y2="'+Y(Math.min(hi,g[0]+g[1]))+'" stroke="'+o[2]+'" stroke-width="1.5" opacity=".8"/>'+mark(o[1],xx,Y(g[0]),o[2],false,4.2)+'<title>'+s.season+' '+D.labels[o[0]]+': '+f4(g[0])+' ± '+g[1].toFixed(4)+' ('+s.n+' matches)</title>';});
+    b+='<text x="'+x+'" y="'+(h-24)+'" text-anchor="middle">'+(narrow?"’"+s.season.slice(2,4):s.season.slice(2,4)+"/"+s.season.slice(5))+'</text>';
+    if(s.n<300)b+='<text x="'+x+'" y="'+(h-10)+'" text-anchor="middle">'+(narrow?"part":s.n+' m.')+'</text>';});
+  if(narrow)b+='<text x="'+L+'" y="'+(h-1)+'">’yy = starting year; part = in progress</text>';
+  return S(w,h,b,"Season-by-season gap to the bookmakers in log loss for the goals-only and goals-plus-shots models");}
+
+/* Chart 3: the shots evidence */
+function shotsChart(){var Wn=F.shots.windows,w=W0("c3"),rowH=54,top=22,rows=Wn.length+1,h=top+rows*rowH+30,lo=-0.0125,hi=0.0085,pad=14;
+  function X(v){return pad+(v-lo)/(hi-lo)*(w-2*pad);}
+  var b="";[-0.01,-0.005,0,0.005].forEach(function(t){b+=(t===0?'<line class="zero"':'<line class="gl"')+' x1="'+X(t)+'" x2="'+X(t)+'" y1="'+(top-8)+'" y2="'+(h-24)+'"/><text x="'+X(t)+'" y="'+(h-8)+'" text-anchor="middle">'+(t>0?"+":t<0?"−":"")+Math.abs(t).toFixed(3)+'</text>';});
+  Wn.forEach(function(r,i){var y=top+i*rowH+rowH-14;b+='<text class="lab" x="'+pad+'" y="'+(y-22)+'">'+esc(r.name)+'</text>';
+    [[r.a,"var(--oh)",true,-6],[r.b,"var(--oh)",false,7]].forEach(function(o){var yy=y+o[3]-6;
+      b+='<line x1="'+X(o[0]-r.se)+'" x2="'+X(o[0]+r.se)+'" y1="'+yy+'" y2="'+yy+'" stroke="'+o[1]+'" stroke-width="1.5"/>'+mark("c",X(o[0]),yy,o[1],o[2],4.5)+'<title>'+esc(r.name)+': '+f4(o[0])+' ± '+r.se.toFixed(4)+'</title>';});});
+  var py=top+Wn.length*rowH+rowH-20,p=F.shots.pooled;
+  b+='<text class="lab" x="'+pad+'" y="'+(py-20)+'" style="font-weight:600">All three windows pooled</text><line x1="'+X(p[0]-p[1])+'" x2="'+X(p[0]+p[1])+'" y1="'+py+'" y2="'+py+'" stroke="var(--oa)" stroke-width="2"/>'+mark("d",X(p[0]),py,"var(--oa)",false,4.5)+'<title>Pooled: '+f4(p[0])+' ± '+p[1].toFixed(4)+'</title>';
+  return S(w,h,b,"Change in log loss from adding shots, for three time windows and pooled; negative means the shots model is better");}
+
+function boardTable(sb,title){if(!sb||!sb.n)return"";
+  var rows=sb.models.map(function(m){return '<tr><td>'+esc(m.label)+'</td><td>'+m.log_loss.toFixed(4)+'</td><td>'+m.brier.toFixed(4)+'</td><td>'+pc(m.accuracy)+'</td><td>'+f4(m.gap)+' ± '+m.gap_se.toFixed(4)+'</td></tr>';}).join("");
+  rows+='<tr class="hl"><td>Bookmakers</td><td>'+sb.book.log_loss.toFixed(4)+'</td><td>'+sb.book.brier.toFixed(4)+'</td><td>'+pc(sb.book.accuracy)+'</td><td>–</td></tr>';
+  return '<h3>'+title+' <span class="note">('+sb.n+' matches)</span></h3><div class="tablewrap"><table><thead><tr><th>Model</th><th>Log loss</th><th>Brier</th><th>Right</th><th>Gap to bookmakers</th></tr></thead><tbody>'+rows+'</tbody></table></div>';}
+
+function sampleNote(live,bt){var s=function(sb){var g=sb.models.map(function(m){return m.gap;}),se=sb.models.map(function(m){return m.gap_se;});return {spread:Math.max.apply(null,g)-Math.min.apply(null,g),se:Math.max.apply(null,se)};},t="",a=live&&live.n?s(live):null,b=bt&&bt.n?s(bt):null;
+  if(a)t+='In the live sample ('+live.n+' matches) each gap has a standard error of up to '+a.se.toFixed(3)+' and the models differ by '+a.spread.toFixed(3)+', so'+(live.n<100?' differences between models are noise.':' read the differences with that in mind.');
+  if(b)t+=' In the backtest ('+bt.n+' matches) the three models are within '+b.spread.toFixed(3)+' of each other.';return t;}
+function renderFind(){var box=$("pg-find"),L=F.ladder,best=L.filter(function(r){return r.kind==="model";}).slice(-1)[0],Q=F.seasons;
+  var bump=Q.filter(function(s){return ["2021/22","2022/23","2023/24"].indexOf(s.season)>=0;}).map(function(s){return s["v0-poisson"][0];}),
+      rec=Q.filter(function(s){return ["2024/25","2025/26"].indexOf(s.season)>=0;}).map(function(s){return s["v2-shots"][0];});
+  var live=D.scoreboard,bt=D.backtest&&D.backtest.scoreboard;
+  box.innerHTML=
+   '<section class="card sec"><h2>The short version</h2><div class="kgrid">'+
+    '<div class="kpi"><b>'+best.gap.toFixed(3)+'</b><span>How far our best model (v2, with shots) trails the bookmakers in log loss on 1,140 test matches. About '+(best.gap/best.se).toFixed(1)+' standard errors, so a real gap.</span></div>'+
+    '<div class="kpi"><b>'+Math.min.apply(null,bump).toFixed(3)+'–'+Math.max.apply(null,bump).toFixed(3)+'</b><span>The gap in 2021/22 to 2023/24 (plain Poisson model). In the two latest full seasons the shots model trailed by only about '+(rec.reduce(function(a,b){return a+b;},0)/rec.length).toFixed(3)+'.</span></div>'+
+    '<div class="kpi"><b>'+pc(F.ladder.filter(function(r){return r.kind==="model";}).slice(-1)[0].gap/F.ladder.filter(function(r){return r.kind==="model";})[0].gap)+'</b><span>Share of the first model’s gap left after adding promoted-team and shots information (0.012 of 0.020).</span></div>'+
+    '<div class="kpi"><b>'+live.n+'</b><span>Live matches scored so far (plus '+(bt?bt.n:0)+' replayed in the backtest). Far too few to rank models: about 350 are needed.</span></div></div>'+
+    '<ul class="takes"><li><b>We do not beat the bookmakers, and we should say so plainly.</b> Every version sits above them in log loss on the 1,140-match test window and in most seasons.</li>'+
+    '<li><b>Each added idea closed a little of the gap.</b> Promoted-team handling and shots on target moved log loss from 0.9852 to 0.9770, against 0.9650 for the bookmakers.</li>'+
+    '<li><b>The gap is not steady.</b> It rose sharply in 2021/22 to 2023/24 and shrank again, so one headline number hides a lot.</li>'+
+    '<li><b>Shots are suggestive, not proven.</b> The effect is about 1.9 standard errors when the three windows are pooled, and the '+(bt?bt.n:0)+'-match backtest shows no edge for them.</li></ul></section>'+
+   '<section class="card sec"><h2>1. How each idea changed the forecast</h2><p class="note">Log loss on the 1,140 matches of 2023/24 to 2025/26 (lower is better). The axis starts at 0.95, not at zero, so differences look larger than their size in outcomes. The dashed line is the bookmakers.</p><div id="c1">'+'</div>'+
+    '<p class="note"><b>Reading it:</b> the first big step is from guessing (1.0986) to any model (0.985). Everything after that is small: the Dixon-Coles and closed-doors terms barely move it, and the promoted-team and shots stages add the rest. Gaps to the bookmakers are measured against the average-odds benchmark, with margin removed.</p></section>'+
+   '<section class="card sec"><h2>2. The gap to the bookmakers, season by season</h2><p class="note">Model log loss minus bookmaker (Bet365) log loss, per season; each model is refitted weekly using only earlier matches. Bars are ± 1 standard error. Above the zero line means we were worse.</p>'+
+    '<div class="legend">'+legendItem("c","var(--oh)",false,D.labels["v0-poisson"])+legendItem("d","var(--oa)",false,D.labels["v2-shots"])+'<span>Zero line = the bookmakers</span></div><div id="c2"></div>'+
+    '<p class="note"><b>What we can and cannot say:</b> the gap was under 0.01 before 2021/22, about 0.02–0.03 for three seasons, and in 2025/26 is back under 0.01 for both models. Goal rates were ordinary in 2021/22 and 2022/23, and the bookmakers’ average probabilities missed 2022/23’s home wins as badly as ours, so neither goal-rate drift nor an average bias explains it. The bookmakers separated individual matches better in those seasons. The reason is unknown (team news? strengths that change faster than ours?).</p></section>'+
+   '<section class="card sec"><h2>3. Do shots on target help?</h2><p class="note">Change in log loss when the shots stage is added to the working model, in three time windows; negative favours shots. Hollow dots use a shots memory of 0.6 per year, filled dots 1.0. Bars are ± 1 standard error.</p><div class="legend">'+legendItem("c","var(--oh)",true,"shots memory 0.6 / year")+legendItem("c","var(--oh)",false,"1.0 / year")+legendItem("d","var(--oa)",false,"pooled")+'</div><div id="c3"></div>'+
+    '<p class="note"><b>Verdict:</b> two windows lean towards shots, validation leans against, and the pooled effect is '+f4(F.shots.pooled[0])+' ± '+F.shots.pooled[1].toFixed(4)+'. The fitted coefficient on the shots signal is larger than 1 (1.35 to 1.61); we expected 0.5 to 1 and have not tested why. Treat shots as promising, not established.</p></section>'+
+   '<section class="card sec"><h2>4. Live and backtest results so far</h2>'+boardTable(live,"Live: forecasts locked before kickoff")+boardTable(bt,"Backtest: rounds replayed with earlier data only")+
+    '<p class="note">Gap = model log loss minus bookmaker log loss (positive: worse), ± 1 standard error. '+sampleNote(live,bt)+' Live bookmaker figures use odds from the match table captured after the match, which is slightly stricter than a pre-kickoff price.</p></section>'+
+   '<section class="card sec"><h2>5. What did not work</h2><dl class="dl">'+F.didnt.map(function(d){return '<div><dt>'+esc(d.name)+'</dt><dd>'+esc(d.text)+'</dd></div>';}).join("")+'</dl></section>'+
+   '<section class="card sec"><h2>6. Limits</h2><ul class="takes">'+F.limits.map(function(x){return '<li>'+esc(x)+'</li>';}).join("")+'</ul></section>'+
+   '<section class="card sec"><h2>Code and reports</h2><p class="note">All code, tests, reports and the bug log are in the repository.</p><div class="links"><a href="https://github.com/Dhruv1956/epl-predictor">GitHub repository</a><a href="https://github.com/Dhruv1956/epl-predictor/blob/main/reports/bug_log.md">Bug log</a><a href="https://github.com/Dhruv1956/epl-predictor/blob/main/PLAN.md">Project plan</a></div></section>';
+  drawFind();}
+function drawFind(){if(PAGE!=="find")return;$("c1").innerHTML=ladderChart();$("c2").innerHTML=seasonChart();$("c3").innerHTML=shotsChart();}
+var rzT;window.addEventListener("resize",function(){clearTimeout(rzT);rzT=setTimeout(drawFind,120);});
+
+function renderMethod(){$("pg-method").innerHTML=
+ '<section class="card sec"><h2>1. The goals model</h2><p>In a match, the home side scores X goals and the away side scores Y. We model them as independent Poisson counts:</p>'+
+  '<div class="eq">X ~ Poisson(λ),   Y ~ Poisson(μ)\nlog λ = ι + η + α(home) − β(away)\nlog μ = ι + α(away) − β(home)</div>'+
+  '<p class="note">ι is the league-wide log goal rate, η the home advantage, α a team’s attacking strength and β its defensive strength (larger β concedes less). Taking logs keeps both rates positive and makes effects multiply: a team with α = 0.2 scores e<sup>0.2</sup> ≈ 1.22 times the average.</p></section>'+
+ '<section class="card sec"><h2>2. Fitting it: a weighted, penalised likelihood</h2><p>The Poisson log-probability of a goal count x with mean λ is x log λ − λ − log x!. Summing over matches, each weighted by how recent it is:</p>'+
+  '<div class="eq">ℓ(θ) = Σᵢ wᵢ [ xᵢ log λᵢ − λᵢ + yᵢ log μᵢ − μᵢ ]  −  κ Σₜ (αₜ² + βₜ²)\nwᵢ = exp(−ξ · ageᵢ)</div>'+
+  '<p class="note">The weight wᵢ halves roughly every 0.69/ξ years, so recent form counts more (ξ = 1 or 1.5 per year here). The κ term is a ridge penalty: it shrinks team strengths towards the average, which stops a team with few matches from getting an extreme rating and, importantly, makes the maximiser unique. We maximise ℓ with L-BFGS-B.</p>'+
+  '<h3>The gradient, derived by hand</h3><p>Write eᵢ = xᵢ − λᵢ and fᵢ = yᵢ − μᵢ (observed minus expected goals). Differentiating, using ∂ log λ/∂α(home) = 1 and so on:</p>'+
+  '<div class="eq">∂ℓ/∂ι  =  Σᵢ wᵢ (eᵢ + fᵢ)\n∂ℓ/∂η  =  Σᵢ wᵢ eᵢ\n∂ℓ/∂αₜ =  Σ(t home) wᵢ eᵢ + Σ(t away) wᵢ fᵢ − 2κ αₜ\n∂ℓ/∂βₜ = −Σ(t away) wᵢ eᵢ − Σ(t home) wᵢ fᵢ − 2κ βₜ</div>'+
+  '<p class="note">Each line says the same thing: the fit is right when, weighted, observed goals equal expected goals for every parameter (and the penalty pulls back). The code checks these formulas against finite differences, so a sign slip cannot hide.</p></section>'+
+ '<section class="card sec"><h2>3. Extensions we tested</h2><dl class="dl">'+
+  '<div><dt>Closed doors (v1)</dt><dd>Extra term γ added to log λ for matches played without fans (June 2020 to May 2021). Fitted home advantage: about 0.18 with fans, 0.03 without.</dd></div>'+
+  '<div><dt>Promoted teams (v1)</dt><dd>A covariate shifts attack and defence for newly promoted sides, fitted in two stages (offsets about −0.17 attack and −0.11 defence).</dd></div>'+
+  '<div><dt>Shots on target (v2)</dt><dd>Stage 0 fits the same Poisson model to shots on target using earlier matches. The resulting shot-based strengths enter the goal rates through one learned coefficient c, so goal strengths become shrunken deviations from shot-implied strength.</dd></div>'+
+  '<div><dt>Dixon-Coles</dt><dd>Multiplies the probability of 0–0, 1–0, 0–1 and 1–1 by a correction τ with parameter ρ, to relax independence. Tested; not adopted.</dd></div></dl></section>'+
+ '<section class="card sec"><h2>4. From goal rates to win, draw, loss</h2><p>With λ and μ known, the chance of the score x–y is P(x;λ) · P(y;μ). A result’s probability adds up its scorelines:</p>'+
+  '<div class="eq">P(home win) = Σ over x &gt; y of P(x;λ) P(y;μ)\nP(draw)     = Σ over x = y\nP(away win) = Σ over x &lt; y   (grid 0 to 10 goals, renormalised to sum to 1)</div>'+
+  '<p class="note"><b>Why the likeliest score can disagree with the likeliest result:</b> a result is many scorelines added together. A home win can be 52% likely while the single likeliest score is 1–1, because the 52% is spread over 1–0, 2–0, 2–1, 3–1 and more, whereas “1–1” is one scoreline.</p></section>'+
+ '<section class="card sec"><h2>5. Scoring a forecast</h2><p>For n matches with outcome yᵢ ∈ {home, draw, away} and forecast probabilities pᵢ:</p>'+
+  '<div class="eq">log loss = −(1/n) Σᵢ log pᵢ(yᵢ)\nBrier    =  (1/n) Σᵢ Σₖ ( pᵢ(k) − 1[yᵢ = k] )²</div>'+
+  '<p class="note">Log loss punishes confident mistakes harshly; a coin-flip over three outcomes scores log 3 = 1.0986. Bookmaker odds oₖ become probabilities by taking 1/oₖ and dividing by their sum, which removes the margin. The gap between two forecasters is the mean of the per-match loss differences dᵢ, with standard error sd(d)/√n.</p></section>'+
+ '<section class="card sec"><h2>6. Keeping it honest</h2><ul class="takes"><li>Train and test are split by time only; no future match is ever used to predict an earlier one.</li>'+
+  '<li>A match’s features use only information available before kickoff. Same-match shots are never used for that match.</li>'+
+  '<li>Choices were made on a validation window (2021–23). An earlier window (2018–21) and live data are the independent checks.</li>'+
+  '<li>Live forecasts are written to an append-only log before kickoff and never overwritten.</li>'+
+  '<li>Every bug and fix is recorded in the bug log.</li></ul></section>';}
+
 /* ---------- render ---------- */
 function render(){
+  route();pagesNav();$("pg-pred").hidden=PAGE!=="pred";$("pg-find").hidden=PAGE!=="find";$("pg-method").hidden=PAGE!=="method";
+  if(PAGE==="find"){renderFind();return;}if(PAGE==="method"){renderMethod();return;}
   modes();banner();board();tabs();var w=SRC().weeks[cur];
   $("wkTitle").textContent="Matchweek "+w.matchweek+(MODE==="bt"?" · backtest":"");$("wkSum").textContent=weekSummary(w);cmp(w);
   var box=$("matches");box.innerHTML="";
   w.matches.forEach(function(m,i){box.appendChild(card(m,w.matchweek+"-"+i));});
 }
+window.addEventListener("hashchange",function(){if(/^bt\d+$/.test(location.hash.replace("#","")) && D.backtest)MODE="bt";pick();render();});
 render();
 })();
 </script>

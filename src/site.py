@@ -12,6 +12,7 @@ import argparse
 import json
 from pathlib import Path
 
+from .findings import build as build_findings
 from .site_data import build_data
 
 TEMPLATE = Path(__file__).with_name("site_template.html")
@@ -41,6 +42,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
     bt = Path(args.backtest_dir) if (Path(args.backtest_dir) / "predictions_log.csv").exists() else None
     data = build_data(args.log, args.explanations, args.matches, backtest_dir=bt)
+    data["findings"] = build_findings("reports")
     frag = render(data)
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
