@@ -129,3 +129,39 @@ def test_stale_shots_data_is_rejected(league):
     fx = L.read_fixtures(tmp / "fixtures.csv")
     with pytest.raises(ValueError, match="add_shots"):
         L.predict_fixtures(tmp / "matches.csv", fx, datetime(2020, 1, 1))
+
+
+def test_log_is_append_only_at_the_byte_level(tmp_path):
+    """Old lines must survive byte for byte, including float text that a pandas round trip would change."""
+    cols = L.LOG_COLUMNS
+    def row(home, **kw):
+        r = {c: "" for c in cols}
+        r.update({"model_version": "v0-poisson", "match_date": "2026-10-23", "home": home, "away": "X", "lam": 0.30000000000000004,
+                  "mu": 1.0000000000000001e-05, "pH": 0.1, "pD": 0.2, "pA": 0.7})
+        r.update(kw)
+        return r
+    log = tmp_path / "log.csv"
+    first = pd.DataFrame([row("A")], columns=cols)
+    first.to_csv(log, index=False)
+    raw = log.read_text()
+    raw = raw.replace("0.30000000000000004", "0.3000000000000000444")  # text pandas would rewrite as 0.30000000000000004
+    log.write_text(raw)
+    before = log.read_bytes()
+    added, frozen = L.append_frozen(pd.DataFrame([row("A"), row("B")], columns=cols), log)
+    after = log.read_bytes()
+    assert (added, frozen) == (1, 1)
+    assert after.startswith(before)  # nothing before the appended lines changed
+    assert after[len(before):].count(b"\n") == 1
+    assert len(pd.read_csv(log)) == 2
+
+
+def test_append_to_a_log_without_trailing_newline(tmp_path):
+    cols = L.LOG_COLUMNS
+    r = {c: "" for c in cols}
+    r.update({"model_version": "v0-poisson", "match_date": "2026-10-23", "home": "A", "away": "X"})
+    log = tmp_path / "log.csv"
+    pd.DataFrame([r], columns=cols).to_csv(log, index=False)
+    log.write_bytes(log.read_bytes().rstrip(b"\n"))
+    r2 = dict(r, home="B")
+    L.append_frozen(pd.DataFrame([r2], columns=cols), log)
+    assert len(pd.read_csv(log)) == 2

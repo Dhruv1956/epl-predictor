@@ -310,8 +310,8 @@ function card(m,idx){
    '<div class="pr d"><div class="big">'+p[1]+'%</div><div class="lab"><i class="sw" style="background:var(--od)"></i>Draw</div></div>'+
    '<div class="pr a"><div class="big">'+p[2]+'%</div><div class="lab"><i class="sw" style="background:var(--oa)"></i>'+esc(m.away)+' win</div></div></div>'+
    '<div class="bar"><span style="flex:'+v.p[0]+';background:var(--oh)"></span><span style="flex:'+v.p[1]+';background:var(--od)"></span><span style="flex:'+v.p[2]+';background:var(--oa)"></span></div>'+
-   '<p class="meta">Expected goals <b>'+v.lam.toFixed(2)+' – '+v.mu.toFixed(2)+'</b> · likeliest single score <b>'+best[0]+'–'+best[1]+'</b> ('+pc(best[2])+')'+
-   (g.best_key!==fk?'<br><span class="fine">'+esc(rname[fk].charAt(0).toUpperCase()+rname[fk].slice(1))+' is still the likeliest result ('+pc(g[fk].p)+'): a result adds up many scores, so no single score of it beats '+best[0]+'–'+best[1]+'. Likeliest score for it: <b>'+g[fk].top[0][0]+'–'+g[fk].top[0][1]+'</b> ('+pc(g[fk].top[0][2])+').</span>':'')+'</p>';
+   '<p class="meta">Expected goals <b>'+v.lam.toFixed(2)+' – '+v.mu.toFixed(2)+'</b> · likeliest score if '+esc(rname[fk])+': <b>'+g[fk].top[0][0]+'–'+g[fk].top[0][1]+'</b> ('+pc(g[fk].top[0][2])+')'+
+   (g.best_key!==fk?'<br><span class="fine">The single likeliest scoreline is '+best[0]+'–'+best[1]+' ('+pc(best[2])+'), but that is one scoreline of '+esc(rname[g.best_key])+', which is less likely overall ('+pc(g[g.best_key].p)+') than '+esc(rname[fk])+' ('+pc(g[fk].p)+'): a result adds up many scores.</span>':'')+'</p>';
   if(m.result){var y=m.result.y,gave=v.p[y];
     h+='<p class="resline"><b>'+(y===1?'Draw':esc(winner(m))+' won')+'.</b> We gave that outcome '+pc(gave)+'. '+(v.hit?'It was our favoured outcome.':'It was not our favoured outcome.')+
       (m.book?' The bookmakers gave it '+pc(m.book.p[y])+' ('+m.book.when+').':'')+'</p>';

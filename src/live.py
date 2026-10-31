@@ -189,18 +189,31 @@ def predict_fixtures(matches_path, fixtures, now, models=MODELS, stamp=None):
 
 
 def append_frozen(new_rows, log_path):
-    """Append rows whose (match, model version) is not yet in the log. Returns (n_added, n_already_frozen)."""
+    """Append rows whose (match, model version) is not yet in the log. Returns (n_added, n_already_frozen).
+
+    The log is append-only at the byte level: existing lines are never read back and rewritten (a pandas
+    round trip can re-serialise old floats, e.g. in the 16th digit). Only the new lines are added at the end.
+    """
     log_path = Path(log_path)
     key = ["match_date", "home", "away", "model_version"]
-    if log_path.exists():
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    if log_path.exists() and log_path.stat().st_size > 0:
         old = pd.read_csv(log_path)
+        if list(old.columns) != list(new_rows.columns):
+            raise ValueError(f"log columns {list(old.columns)} differ from the new rows {list(new_rows.columns)}")
         seen = set(map(tuple, old[key].values))
         fresh = new_rows[[tuple(r) not in seen for r in new_rows[key].values]]
-        out = pd.concat([old, fresh], ignore_index=True)
+        if len(fresh):
+            with open(log_path, "rb") as fh:
+                fh.seek(-1, 2)
+                needs_newline = fh.read(1) not in (b"\n", b"\r")
+            with open(log_path, "a", encoding="utf-8", newline="") as fh:
+                if needs_newline:
+                    fh.write("\n")
+                fresh.to_csv(fh, index=False, header=False, lineterminator="\n")
     else:
-        fresh, out = new_rows, new_rows
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(log_path, index=False)
+        fresh = new_rows
+        fresh.to_csv(log_path, index=False, lineterminator="\n")
     return len(fresh), len(new_rows) - len(fresh)
 
 
