@@ -37,6 +37,7 @@ SHOTS_POOLED = (-0.003, 0.0017)  # pooled change and its SE, about 1.9 SE (PLAN.
 
 DIDNT_WORK = [
     ("Dixon-Coles correction", "Fitted ρ = −0.09 (low scores 0–0 and 1–1 slightly more likely than independence says), but the gain in log loss, 0.0007 ± 0.0008, is inside the noise. Not adopted."),
+    ("Bivariate Poisson (shared tempo term)", "Lets the two sides' goals share a common component, so they can be positively correlated. The fitted shared rate went to its lower bound (0.0001) in every weekly refit, so forecasts were identical to the independent model to five decimals in all three windows, and the likelihood falls steadily as the shared rate rises. Once team strengths are fitted, home and away goals show no positive dependence. Not adopted."),
     ("Team-specific home advantage", "Fitted team deltas were small (sd 0.05) and validation did not improve. Not adopted."),
     ("Closed-doors term", "Needed to describe 2020/21: home advantage was about 0.18 with fans and about 0.03 without. Improves description, but changes log loss by only 0.0001."),
     ("Promoted-team offsets", "Across three windows the effect is +0.0008 (worse), 0.0000 and −0.0036 (better): pooled about zero. Kept as harmless, but unproven."),
