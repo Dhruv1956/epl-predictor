@@ -43,6 +43,7 @@ DIDNT_WORK = [
     ("Team-specific home advantage", "Fitted team deltas were small (sd 0.05) and validation did not improve. Not adopted."),
     ("Closed-doors term", "Needed to describe 2020/21: home advantage was about 0.18 with fans and about 0.03 without. Improves description, but changes log loss by only 0.0001."),
     ("Promoted-team offsets", "Across three windows the effect is +0.0008 (worse), 0.0000 and −0.0036 (better): pooled about zero. Kept as harmless, but unproven."),
+    ("Rest days between matches", "Days since each side's previous Premier League match, entered as a single shared effect (home rate up and away rate down when the home side is the more rested). Log-loss change: +0.0014, +0.0015 and −0.0015 for the linear version, −0.0026, −0.0012 and −0.0011 for a 'three days or fewer' flag, each within about one standard error, and the linear effect changes sign between windows. Where the flag has a clear sign it is the wrong one for fatigue (short-rest sides scored slightly more), probably because those are the European sides, which are stronger. Cup and European games are not in the data, so the feature can only see league congestion. Not adopted."),
 ]
 
 LIMITS = [
