@@ -59,3 +59,18 @@ def test_forecast_does_not_use_later_results():
     df2.loc[late, ["FTHG", "FTAG"]] = rng.poisson(3, (late.sum(), 2))
     b = D.walk_forward_drift(df2, T, "2020-09-01", cut, 5.0, 10.0)
     assert np.allclose(a.values, b.values)
+
+
+def test_covariate_gradient_and_one_block_equals_model_b_with_covariates():
+    h, a, x, y, w, p, T, nP, th = _data(nP=3)
+    rng = np.random.default_rng(9)
+    X = rng.normal(0, 1, (len(h), 2))
+    Xm = rng.normal(0, 1, (len(h), 2))
+    th = np.concatenate([th, [0.1, -0.2]])
+    _, g = D.loglik_and_grad(th, h, a, x, y, w, p, T, nP, 5.0, 12.0, X, Xm)
+    num = approx_fprime(th, lambda t: D.loglik_and_grad(t, h, a, x, y, w, p, T, nP, 5.0, 12.0, X, Xm)[0], 1e-6)
+    assert np.allclose(g, num, rtol=1e-4, atol=1e-3)
+    p0 = np.zeros_like(p)
+    ref = P.fit(h, a, x, y, w, T, 5.0, X=X, Xm=Xm).theta
+    got, _ = D.fit_drift(h, a, x, y, w, p0, T, 5.0, 7.0, X=X, Xm=Xm)
+    assert np.allclose(ref, got, atol=1e-4)

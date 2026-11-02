@@ -44,10 +44,15 @@ def unpack(theta, T, nP):
     return iota, eta, A, B
 
 
-def loglik_and_grad(theta, h, a, x, y, w, p, T, nP, k0, k1):
+def loglik_and_grad(theta, h, a, x, y, w, p, T, nP, k0, k1, X=None, Xm=None):
+    """Optional covariates: log lam += X @ gamma, log mu += Xm @ gamma (one gamma vector, stored after the strengths).
+    Extra gradient: d ell / d gamma = sum_i w_i ( e_i X_i + f_i Xm_i )."""
     iota, eta, A, B = unpack(theta, T, nP)
-    lam = np.exp(iota + eta + A[p, h] - B[p, a])
-    mu = np.exp(iota + A[p, a] - B[p, h])
+    gam = theta[2 + 2 * nP * T:]
+    cl = X @ gam if X is not None else 0.0
+    cm = Xm @ gam if Xm is not None else 0.0
+    lam = np.exp(iota + eta + A[p, h] - B[p, a] + cl)
+    mu = np.exp(iota + A[p, a] - B[p, h] + cm)
     ll = np.sum(w * (x * np.log(lam) - lam + y * np.log(mu) - mu))
     e, f = w * (x - lam), w * (y - mu)
     flat = lambda t, v: np.bincount(p * T + t, weights=v, minlength=nP * T)
@@ -63,17 +68,20 @@ def loglik_and_grad(theta, h, a, x, y, w, p, T, nP, k0, k1):
             ll -= k1 * np.sum(d ** 2)
             gM[1:] -= 2 * k1 * d
             gM[:-1] += 2 * k1 * d
-    return ll, np.concatenate([[g_iota, g_eta], gA.ravel(), gB.ravel()])
+    g = np.concatenate([[g_iota, g_eta], gA.ravel(), gB.ravel()])
+    if X is not None:
+        g = np.concatenate([g, X.T @ e + Xm.T @ f])
+    return ll, g
 
 
-def fit_drift(h, a, x, y, w, p, T, k0, k1, theta0=None, max_iter=1000):
+def fit_drift(h, a, x, y, w, p, T, k0, k1, theta0=None, max_iter=1000, X=None, Xm=None):
     h, a, p = np.asarray(h), np.asarray(a), np.asarray(p)
     x, y, w = (np.asarray(v, dtype=float) for v in (x, y, w))
     nP = int(p.max()) + 1
     if theta0 is None:
-        theta0 = np.zeros(2 + 2 * nP * T)
+        theta0 = np.zeros(2 + 2 * nP * T + (X.shape[1] if X is not None else 0))
         theta0[0] = np.log(max(np.average(np.concatenate([x, y]), weights=np.concatenate([w, w])), 1e-3))
-    f = lambda th: tuple(-v for v in loglik_and_grad(th, h, a, x, y, w, p, T, nP, k0, k1))
+    f = lambda th: tuple(-v for v in loglik_and_grad(th, h, a, x, y, w, p, T, nP, k0, k1, X, Xm))
     r = minimize(f, np.array(theta0, float), jac=True, method="L-BFGS-B",
                  options={"maxiter": max_iter, "maxfun": 10 * max_iter, "ftol": 1e-12, "gtol": 1e-7})
     return r.x, nP
@@ -84,11 +92,16 @@ def _extend(theta, T, nP_old, nP_new):
     iota, eta, A, B = unpack(theta, T, nP_old)
     A2 = np.vstack([A, np.repeat(A[-1:], nP_new - nP_old, axis=0)])
     B2 = np.vstack([B, np.repeat(B[-1:], nP_new - nP_old, axis=0)])
-    return np.concatenate([[iota, eta], A2.ravel(), B2.ravel()])
+    return np.concatenate([[iota, eta], A2.ravel(), B2.ravel(), theta[2 + 2 * nP_old * T:]])
 
 
-def walk_forward_drift(df, T, start, end, k0, k1, xi=0.0, length_days=91):
-    """Weekly walk-forward: refit on matches strictly before each block, forecast with the last period's strengths."""
+def walk_forward_drift(df, T, start, end, k0, k1, xi=0.0, length_days=91, spec=None):
+    """Weekly walk-forward: refit on matches strictly before each block, forecast with the last period's strengths.
+
+    spec (a walkforward.ModelSpec) adds the same covariates as that model (closed doors, promoted offsets and, if
+    spec.shots, the stage-0 shot-strength covariate fitted on the training matches only). Promoted offsets are
+    estimated jointly here, not in the separate first stage some specs ask for."""
+    from .walkforward import _covariates, fit_shot_strengths
     start, end = pd.Timestamp(start), pd.Timestamp(end)
     epoch = df["Date"].min()
     window = df[(df["Date"] >= start) & (df["Date"] < end)]
@@ -99,14 +112,18 @@ def walk_forward_drift(df, T, start, end, k0, k1, xi=0.0, length_days=91):
         p = period_index(train["Date"], epoch, length_days)
         nP = int(p.max()) + 1
         w = P.time_weights(P.age_in_years(train["Date"].values, ref.to_datetime64()), xi) if xi > 0 else np.ones(len(train))
+        aux = fit_shot_strengths(train, ref, T, spec) if (spec is not None and spec.shots) else None
+        X, Xm = _covariates(train, spec, aux) if spec is not None else (None, None)
         th0 = None if theta is None else (theta if nP == nP_prev else _extend(theta, T, nP_prev, nP))
         theta, nP = fit_drift(train["h"].values, train["a"].values, train["FTHG"].values, train["FTAG"].values, w, p, T,
-                              k0, k1, theta0=th0)
+                              k0, k1, theta0=th0, X=X, Xm=Xm)
         nP_prev = nP
         iota, eta, A, B = unpack(theta, T, nP)
         h, a = block["h"].values, block["a"].values
-        lam = np.exp(iota + eta + A[-1, h] - B[-1, a])
-        mu = np.exp(iota + A[-1, a] - B[-1, h])
+        gam = theta[2 + 2 * nP * T:]
+        Xb, Xmb = _covariates(block, spec, aux) if spec is not None else (None, None)
+        lam = np.exp(iota + eta + A[-1, h] - B[-1, a] + (Xb @ gam if Xb is not None else 0.0))
+        mu = np.exp(iota + A[-1, a] - B[-1, h] + (Xmb @ gam if Xmb is not None else 0.0))
         probs.append(P.outcome_probs(lam, mu))
         idx.append(block.index.values)
     out = pd.DataFrame(np.vstack(probs), index=np.concatenate(idx), columns=["pH", "pD", "pA"])
@@ -135,18 +152,24 @@ def main(argv=None):
     ap.add_argument("--xi-grid", default="0,0.5")
     ap.add_argument("--length", type=int, default=91)
     ap.add_argument("--out", default="reports/drift")
+    ap.add_argument("--shots", action="store_true", help="put the drift under the v2-shots covariates")
     args = ap.parse_args(argv)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     df, teams = load_matches(args.data)
     T = len(teams)
-    base = {n: walk_forward(df, T, s, e, args.xi, args.kappa) for n, (s, e) in WINDOWS.items()}
+    spec = None
+    if args.shots:
+        from .live import MODELS
+        spec, args.xi = MODELS["v2-shots"]["spec"], MODELS["v2-shots"]["xi"]
+    base = {n: walk_forward(df, T, s, e, args.xi, args.kappa, spec=spec) if spec else walk_forward(df, T, s, e, args.xi, args.kappa)
+            for n, (s, e) in WINDOWS.items()}
     yy = {n: df.loc[b.index, "y"].values for n, b in base.items()}
     rows = []
     s, e = WINDOWS["validation"]
     for xi in [float(v) for v in args.xi_grid.split(",")]:
         for k1 in [float(v) for v in args.k1_grid.split(",")]:
-            wf = walk_forward_drift(df, T, s, e, args.kappa, k1, xi, args.length)
+            wf = walk_forward_drift(df, T, s, e, args.kappa, k1, xi, args.length, spec)
             d, se = _paired(wf, base["validation"], yy["validation"])
             rows.append({"xi": xi, "k1": k1, "LL": M.log_loss(wf.values, yy["validation"]), "delta": d, "se": se})
             print(rows[-1], flush=True)
@@ -156,7 +179,7 @@ def main(argv=None):
     print("best on validation:", dict(best), flush=True)
     res = []
     for n, (s, e) in WINDOWS.items():
-        wf = walk_forward_drift(df, T, s, e, args.kappa, best["k1"], best["xi"], args.length)
+        wf = walk_forward_drift(df, T, s, e, args.kappa, best["k1"], best["xi"], args.length, spec)
         d, se = _paired(wf, base[n], yy[n])
         res.append({"window": n, "n": len(yy[n]), "LL_B": M.log_loss(base[n].values, yy[n]), "LL_drift": M.log_loss(wf.values, yy[n]),
                     "delta": d, "se": se, "k1": best["k1"], "xi": best["xi"]})
