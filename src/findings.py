@@ -55,6 +55,7 @@ LIMITS = [
     "Standard errors treat matches as independent, which understates the real uncertainty because a team's matches are related.",
     "Live sample is tiny. About 350 matches are needed to confirm a 0.0165 gap at 2 standard errors; one round is 10.",
     "Bookmaker odds are the average across firms taken from the match table (captured around the match), not a locked pre-kickoff price, so the live benchmark is slightly stricter than a real bet.",
+    "Against the hardest benchmark, the bookmakers' closing odds, the shots model trails by 0.017 in log loss (SE 0.005) on the 970 test matches where every price is available, against 0.012 for the earlier-recorded average odds. The ranked probability score gives the same ordering (shots model 0.1961, closing odds 0.1906).",
 ]
 
 
