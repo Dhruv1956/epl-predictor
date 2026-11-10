@@ -59,12 +59,16 @@ class ModelSpec:
     shots: bool = False
     shots_xi: float = 0.5
     shots_kappa: float = 5.0
+    # Further same-style stage-0 statistics, each (home_column, away_column, xi_s, kappa_s), e.g. ("HS", "AS", 1.0, 5.0) for
+    # total shots or ("HC", "AC", 1.0, 5.0) for corners. Each gets its own Poisson stage-0 fit and its own coefficient.
+    extra_stats: tuple = ()
 
     def covariate_names(self):
         """Names of the gamma coefficients, in theta order."""
         names = ["closed_doors"] if self.closed_doors else []
         names = names + (["promoted_attack", "promoted_defence"] if self.promoted else [])
-        return names + (["shots_strength"] if self.shots else [])
+        names = names + (["shots_strength"] if self.shots else [])
+        return names + [f"extra_{h}_{a}" for h, a, _, _ in self.extra_stats]
 
 
 BASE = ModelSpec()
@@ -142,7 +146,7 @@ def _covariates(frame, spec, aux=None):
     promoted     : attack offset  pi_a: X = h_new,  Xm = a_new   (a newcomer's own scoring rate)
                    defence offset pi_b: X = -a_new, Xm = -h_new  (defence enters log rates with a minus)
     """
-    if not (spec.closed_doors or spec.promoted or spec.shots):
+    if not (spec.closed_doors or spec.promoted or spec.shots or spec.extra_stats):
         return None, None
     cols_l, cols_m = [], []
     zero = np.zeros(len(frame))
@@ -159,21 +163,37 @@ def _covariates(frame, spec, aux=None):
         h, a = frame["h"].values, frame["a"].values
         cols_l.append(aux["a"][h] - aux["b"][a])
         cols_m.append(aux["a"][a] - aux["b"][h])
+    if spec.extra_stats:
+        if aux is None or "extra" not in aux:
+            raise ValueError("extra_stats need the stage-0 strengths (aux['extra'])")
+        h, a = frame["h"].values, frame["a"].values
+        for ex in aux["extra"]:
+            cols_l.append(ex["a"][h] - ex["b"][a])
+            cols_m.append(ex["a"][a] - ex["b"][h])
     return np.column_stack(cols_l), np.column_stack(cols_m)
 
 
-def fit_shot_strengths(train, ref, T, spec):
-    """Stage 0: Poisson model for shots on target. Returns {'a': attack, 'b': defence} (length T each)."""
-    tr = train.dropna(subset=["HST", "AST"])
+def _stage0(train, ref, T, spec, hcol, acol, xi_s, kappa_s):
+    """One stage-0 Poisson fit of a same-match count (home column, away column) on earlier matches only."""
+    tr = train.dropna(subset=[hcol, acol])
     if len(tr) == 0:
-        raise ValueError("no training matches with shots-on-target data")
+        raise ValueError(f"no training matches with {hcol}/{acol} data")
     age = P.age_in_years(tr["Date"].values, ref.to_datetime64())
-    w = P.time_weights(age, spec.shots_xi)
+    w = P.time_weights(age, xi_s)
     sub = ModelSpec(closed_doors=spec.closed_doors, promoted=spec.promoted)
     X0, Xm0 = _covariates(tr, sub)
-    res0 = P.fit(tr["h"].values, tr["a"].values, tr["HST"].values, tr["AST"].values, w, T, spec.shots_kappa, X=X0, Xm=Xm0)
+    res0 = P.fit(tr["h"].values, tr["a"].values, tr[hcol].values, tr[acol].values, w, T, kappa_s, X=X0, Xm=Xm0)
     _, _, alpha, beta = res0.unpack(T)
     return {"a": alpha, "b": beta}
+
+
+def fit_shot_strengths(train, ref, T, spec):
+    """Stage 0: Poisson model for shots on target. Returns {'a': attack, 'b': defence, 'extra': [...]} (length T each).
+
+    'extra' holds the same kind of strengths for every statistic in spec.extra_stats (empty list if none)."""
+    out = _stage0(train, ref, T, spec, "HST", "AST", spec.shots_xi, spec.shots_kappa) if spec.shots else {}
+    out["extra"] = [_stage0(train, ref, T, spec, h, a, xi_s, k_s) for h, a, xi_s, k_s in spec.extra_stats]
+    return out
 
 
 def fit_before(df, ref_date, T, xi, kappa, theta0=None, spec=BASE):
@@ -184,7 +204,7 @@ def fit_before(df, ref_date, T, xi, kappa, theta0=None, spec=BASE):
         raise ValueError(f"No matches before {ref.date()}")
     age = P.age_in_years(train["Date"].values, ref.to_datetime64())
     w = P.time_weights(age, xi)
-    aux = fit_shot_strengths(train, ref, T, spec) if spec.shots else None
+    aux = fit_shot_strengths(train, ref, T, spec) if (spec.shots or spec.extra_stats) else None
     X, Xm = _covariates(train, spec, aux)
     fixed = None
     if spec.promoted and spec.promo_xi is not None:

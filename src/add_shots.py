@@ -15,6 +15,7 @@ from pathlib import Path
 import pandas as pd
 
 KEEP = ["Date", "HomeTeam", "AwayTeam", "HS", "AS", "HST", "AST"]
+OPTIONAL = ["HC", "AC"]  # corners: used by the extra-statistics test; left empty if a file lacks them
 
 
 def build_shots(raw_dir):
@@ -24,7 +25,10 @@ def build_shots(raw_dir):
         missing = [c for c in KEEP if c not in d.columns]
         if missing:
             raise ValueError(f"{f.name} is missing columns {missing}")
-        d = d[KEEP].dropna(subset=["Date", "HomeTeam", "AwayTeam"]).copy()
+        for c in OPTIONAL:
+            if c not in d.columns:
+                d[c] = float("nan")
+        d = d[KEEP + OPTIONAL].dropna(subset=["Date", "HomeTeam", "AwayTeam"]).copy()
         d["Date"] = pd.to_datetime(d["Date"], dayfirst=True, format="mixed")
         d["season_file"] = f.stem.replace("E0_", "")
         frames.append(d)
